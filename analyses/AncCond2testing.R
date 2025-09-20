@@ -110,7 +110,9 @@ AncCond <- function(tree,
                                      current.map = anc.state.dt[[j]],
                                      anc.states.cont.trait = anc.states.cont.trait,
                                      dt.vec = dt.vec,
-                                     message = message)
+                                     message = message,
+                                     j = j,
+                                     nsim = nsim)
   }
   meantrans <- meantrans / nsim
   # mean of means
@@ -155,19 +157,22 @@ AncCond <- function(tree,
   lines(density(obs.dist3$`12`,na.rm = T), col = 'red')
   legend(x = 'topright', legend = c('Observed', 'Null'), col  = c('red', 'black'), lwd = 2)
   
-  results <- list(obs.dist1, null.dist1)
-  names(results) <- c("observed","null")
-  pvals <- CalcPVal(results, n.tails)
+  summary.data <- list("observed" = obs.dist1,
+                       "null" = null.dist1)
+  pvals <- CalcPVal(summary.data, n.tails)
 
-  results <- list(obs.dist, null.dist,pvals, meantrans)
-  names(results) <- c("observed","null",'pvals', 'mean n trans')
+  results <- c(summary.data,
+               list('pvals' = pvals,
+                    'mean n trans' = meantrans,
+                    'observed distributions' = list('mean of means' = obs.dist1,
+                                                    'one mean' = obs.dist2,
+                                                    'no mean' = obs.dist3),
+                    'null distributions' = list('mean of means' = null.dist1,
+                                                'one mean' = null.dist2,
+                                                'no mean' = null.dist3)))
   class(results) <- "AncCond"
 
   if(message) summary(results)
   return(results)
-  
-  sim.anc.state.dt <- sim.history(tree=tree, Q=anc.state.dt[[1]]$Q,
-                                  nsim=1, message = F,
-                                  anc = 1)
 }
 
