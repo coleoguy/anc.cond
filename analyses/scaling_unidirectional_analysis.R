@@ -24,11 +24,9 @@ source(file.path(project_root, "R", "anc_cond.R"))
 set.seed(321)
 
 simulate_unidirectional_tree <- function(n_taxa, cont_sigma) {
-  tree <- phytools::trees(
-    pars = c(3, 1), type = "bd", n = 1, max.taxa = n_taxa, include.extinct = FALSE
-  )[[1]]
-  tree$edge.length <- tree$edge.length / max(phytools::branching.times(tree))
-  cont_trait <- as.numeric(geiger::sim.char(tree, par = cont_sigma, model = "BM")[, 1])
+  tree <- sim.bdtree(b = 3, d = 1, stop = c("taxa"), n = n_taxa, extinct = FALSE)
+  tree$edge.length <- tree$edge.length / max(ape::branching.times(tree))
+  cont_trait <- as.numeric(geiger::sim.char(tree, par = cont_sigma, model = "BM", nsim = 1))
   names(cont_trait) <- tree$tip.label
   list(tree = tree, cont_trait = cont_trait)
 }
@@ -56,14 +54,16 @@ scale_edges <- function(tree, branch_means, scale_factor) {
 
 run_scaling_unidirectional <- function(n_trees = 10,
                                        n_taxa = 100,
-                                       scaling_factors = c(1, 2, 4, 8),
+                                       scaling_factors = c(1), #2, 4, 8),
                                        forward_rate = 0.2,
                                        reverse_rate = 1e-04,
                                        cont_sigma = 0.2,
                                        nsim = 10,
                                        iter = 200,
                                        verbose = FALSE) {
-  q_matrix <- matrix(c(-forward_rate, forward_rate, reverse_rate, -reverse_rate), nrow = 2)
+  q_matrix <- matrix(c(-forward_rate, forward_rate, 
+                       reverse_rate, -reverse_rate), 
+                     nrow = 2, byrow = TRUE)
   results <- vector("list", length(scaling_factors))
   names(results) <- paste0("scale_", scaling_factors)
   for (sf in seq_along(scaling_factors)) {
@@ -81,8 +81,9 @@ run_scaling_unidirectional <- function(n_trees = 10,
           scaled_tree,
           par = q_matrix,
           model = "discrete",
-          root = 1
-        )[, 1]
+          root = 1,
+          nsim = 1
+        )
         freq <- mean(disc_trait == min(disc_trait))
         good_sim <- freq > 0.05 && freq < 0.95
       }
@@ -112,3 +113,4 @@ if (sys.nframe() == 0) {
   scaling_results <- run_scaling_unidirectional()
   saveRDS(scaling_results, file = file.path(project_root, "results", "scaling_unidirectional_results.rds"))
 }
+
