@@ -24,28 +24,28 @@ source(file.path(project_root, "R", "anc_cond.R"))
 set.seed(456)
 
 simulate_continuous <- function(tree, sigma) {
-  cont_trait <- as.numeric(geiger::sim.char(tree, par = sigma, model = "BM")[, 1])
+  cont_trait <- as.numeric(geiger::sim.char(tree, par = sigma, model = "BM", nsim = 1))
   names(cont_trait) <- tree$tip.label
   cont_trait
 }
 
 simulate_bidirectional_dataset <- function(n_taxa, sigma, rate) {
-  tree <- phytools::trees(
-    pars = c(3, 1), type = "bd", n = 1, max.taxa = n_taxa, include.extinct = FALSE
-  )[[1]]
-  tree$edge.length <- tree$edge.length / max(phytools::branching.times(tree))
+  tree <- sim.bdtree(b = 3, d = 1, stop = c("taxa"), n = n_taxa, extinct = FALSE)
+  tree$edge.length <- tree$edge.length / max(ape::branching.times(tree))
   cont_trait <- simulate_continuous(tree, sigma)
   disc_trait <- geiger::sim.char(
     tree,
     par = matrix(c(-rate, rate, rate, -rate), 2),
     model = "discrete",
-    root = sample(1:2, 1)
-  )[, 1]
+    root = sample(1:2, 1),
+    nsim = 1
+  )
   list(tree = tree, cont_trait = cont_trait, disc_trait = disc_trait)
 }
 
 run_taxa_bidirectional <- function(n_trees = 20,
-                                   taxa_grid = seq(20, 200, length.out = 5),
+                                   taxa_grid = c(20),
+                                   #taxa_grid = seq(20, 200, length.out = 5),
                                    rate = 0.6,
                                    sigma = 0.2,
                                    nsim = 10,
@@ -86,3 +86,4 @@ if (sys.nframe() == 0) {
   taxa_results <- run_taxa_bidirectional()
   saveRDS(taxa_results, file = file.path(project_root, "results", "taxa_bidirectional_results.rds"))
 }
+

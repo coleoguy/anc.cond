@@ -199,7 +199,7 @@ CreateNull <- function(tree,
 
     while (!good.sim && !timeout) {
       sim.count <- sim.count + 1
-      sim.anc.state.dt <- diversitree::sim.history(
+      sim.anc.state.dt <- phytools::sim.history(
         tree = tree,
         Q = current.Q,
         nsim = 1,
@@ -232,7 +232,8 @@ CreateNull <- function(tree,
     if (good.sim) {
       nulldist[[n]] <- exctractAncestral(
         current.map = sim.anc.state.dt,
-        anc.states.cont.trait = anc.states.cont.trait
+        anc.states.cont.trait = anc.states.cont.trait,
+        count = FALSE
       )
     } else {
       nulldist[[n]] <- list(`12` = NA_real_, `21` = NA_real_)
@@ -244,11 +245,19 @@ CreateNull <- function(tree,
 exctractAncestral <- function(current.map,
                               anc.states.cont.trait,
                               count = FALSE) {
-  ss_nodes <- current.map$mapped.edge[, 1] > 0 & current.map$mapped.edge[, 2] > 0
-  wanted_nodes <- names(ss_nodes[ss_nodes])
+  me <- current.map$mapped.edge
+  col1 <- if ("1" %in% colnames(me)) me[, "1", drop = TRUE] else rep(0, nrow(me))
+  col2 <- if ("2" %in% colnames(me)) me[, "2", drop = TRUE] else rep(0, nrow(me))
+  ss_nodes <- (col1 > 0) & (col2 > 0)
+  
+  # define wanted_nodes before using it
+  rn <- rownames(me); if (is.null(rn)) rn <- as.character(seq_len(nrow(me)))
+  wanted_nodes <- rn[ss_nodes]
+  
   trans.maps <- current.map$maps[ss_nodes]
   producing.nodes12 <- character()
   producing.nodes21 <- character()
+  
   if (length(wanted_nodes) > 0) {
     wanted_nodes <- gsub(",.*", "", wanted_nodes)
     for (i in seq_along(wanted_nodes)) {
@@ -260,9 +269,10 @@ exctractAncestral <- function(current.map,
       }
     }
   }
+  
   producing.nodes12 <- unique(producing.nodes12)
   producing.nodes21 <- unique(producing.nodes21)
-
+  
   res <- list(
     `12` = anc.states.cont.trait$ace[names(anc.states.cont.trait$ace) %in% producing.nodes12],
     `21` = anc.states.cont.trait$ace[names(anc.states.cont.trait$ace) %in% producing.nodes21]
@@ -272,6 +282,7 @@ exctractAncestral <- function(current.map,
   }
   res
 }
+
 
 ProcessObserved <- function(observed.anc.cond) {
   vals12 <- vapply(observed.anc.cond, function(x) mean(x$`12`, na.rm = TRUE), numeric(1))

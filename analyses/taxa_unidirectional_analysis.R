@@ -24,21 +24,20 @@ source(file.path(project_root, "R", "anc_cond.R"))
 set.seed(654)
 
 simulate_unidirectional_dataset <- function(n_taxa, sigma, forward_rate, reverse_rate) {
-  tree <- phytools::trees(
-    pars = c(3, 1), type = "bd", n = 1, max.taxa = n_taxa, include.extinct = FALSE
-  )[[1]]
-  tree$edge.length <- tree$edge.length / max(phytools::branching.times(tree))
-  cont_trait <- as.numeric(geiger::sim.char(tree, par = sigma, model = "BM")[, 1])
+  tree <- sim.bdtree(b = 3, d = 1, stop = c("taxa"), n = n_taxa, extinct = FALSE)
+  tree$edge.length <- tree$edge.length / max(ape::branching.times(tree))
+  cont_trait <- as.numeric(geiger::sim.char(tree, par = sigma, model = "BM", nsim = 1))
   names(cont_trait) <- tree$tip.label
-  q_matrix <- matrix(c(-forward_rate, forward_rate, reverse_rate, -reverse_rate), nrow = 2)
+  q_matrix <- matrix(c(-forward_rate, forward_rate, reverse_rate, -reverse_rate), nrow = 2, byrow = TRUE)
   good_sim <- FALSE
   while (!good_sim) {
     disc_trait <- geiger::sim.char(
       tree,
       par = q_matrix,
       model = "discrete",
-      root = 1
-    )[, 1]
+      root = 1,
+      nsim = 1
+    )
     freq <- mean(disc_trait == min(disc_trait))
     good_sim <- freq > 0.05 && freq < 0.95
   }
@@ -46,7 +45,8 @@ simulate_unidirectional_dataset <- function(n_taxa, sigma, forward_rate, reverse
 }
 
 run_taxa_unidirectional <- function(n_trees = 20,
-                                    taxa_grid = seq(20, 200, length.out = 5),
+                                    #taxa_grid = seq(20, 200, length.out = 5),
+                                    taxa_grid = c(20),
                                     forward_rate = 0.2,
                                     reverse_rate = 1e-04,
                                     sigma = 0.2,

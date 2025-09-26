@@ -46,12 +46,10 @@ scale_tree_by_branch_means <- function(tree, branch_info, scale_factor) {
   scaled
 }
 
-simulate_dataset <- function(n_taxa, rate_matrix) {
-  base_tree <- phytools::trees(
-    pars = c(3, 1), type = "bd", n = 1, max.taxa = n_taxa, include.extinct = FALSE
-  )[[1]]
-  base_tree$edge.length <- base_tree$edge.length / max(phytools::branching.times(base_tree))
-  cont_trait <- as.numeric(geiger::sim.char(base_tree, par = 0.2, model = "BM")[, 1])
+simulate_dataset <- function(n_taxa, cont_sigma) {
+  base_tree <- sim.bdtree(b = 3, d = 1, stop = c("taxa"), n = n_taxa, extinct = FALSE)
+  base_tree$edge.length <- base_tree$edge.length / max(ape::branching.times(base_tree))
+  cont_trait <- as.numeric(geiger::sim.char(base_tree, par = cont_sigma, model = "BM", nsim = 1))
   names(cont_trait) <- base_tree$tip.label
   bm <- branch_means(base_tree, cont_trait)
   list(tree = base_tree, cont_trait = cont_trait, branch_info = bm)
@@ -59,8 +57,9 @@ simulate_dataset <- function(n_taxa, rate_matrix) {
 
 run_scaling_bidirectional <- function(n_trees = 10,
                                       n_taxa = 200,
-                                      scaling_factors = c(1, 2, 4, 8),
+                                      scaling_factors = c(1), # 2, 4, 8),
                                       rate = 0.6,
+                                      cont_sigma = 0.2,
                                       nsim = 10,
                                       iter = 200,
                                       verbose = FALSE) {
@@ -74,14 +73,15 @@ run_scaling_bidirectional <- function(n_trees = 10,
       if (verbose) {
         message("Tree ", t, " of ", n_trees, ", scale factor ", current_sf)
       }
-      dataset <- simulate_dataset(n_taxa, rate_matrix)
+      dataset <- simulate_dataset(n_taxa, cont_sigma)
       scaled_tree <- scale_tree_by_branch_means(dataset$tree, dataset$branch_info, current_sf)
       disc_trait <- geiger::sim.char(
         scaled_tree,
         par = rate_matrix,
         model = "discrete",
-        root = sample(1:2, 1)
-      )[, 1]
+        root = sample(1:2, 1),
+        nsim = 1
+      )
       data_frame <- data.frame(
         taxon = dataset$tree$tip.label,
         cont = dataset$cont_trait,
@@ -108,3 +108,4 @@ if (sys.nframe() == 0) {
   scaling_results <- run_scaling_bidirectional()
   saveRDS(scaling_results, file = file.path(project_root, "results", "scaling_bidirectional_results.rds"))
 }
+
