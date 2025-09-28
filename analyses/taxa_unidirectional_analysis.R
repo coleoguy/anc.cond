@@ -1,91 +1,174 @@
 #!/usr/bin/env Rscript
 # Power analysis varying the number of taxa under a nearly unidirectional model.
 
+#!/usr/bin/env Rscript
+# Power analysis varying the number of taxa under a nearly unidirectional model.
+# Parallel + cross-platform + fastBM + progress bar + checkpoints
+
 suppressPackageStartupMessages({
   library(phytools)
   library(diversitree)
   library(geiger)
+  library(future)
+  library(future.apply)
+  library(progressr)
 })
 
+# ---------- Project root ----------
 locate_project_root <- function() {
   file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
-  if (length(file_arg) == 1) {
-    return(normalizePath(file.path(dirname(sub("^--file=", "", file_arg)), "..")))
-  }
-  if (file.exists(file.path("R", "anc_cond.R"))) {
-    return(normalizePath("."))
-  }
+  if (length(file_arg) == 1) return(normalizePath(file.path(dirname(sub("^--file=", "", file_arg)), "..")))
+  if (file.exists(file.path("R", "anc_cond.R"))) return(normalizePath("."))
   normalizePath("..")
 }
-
 project_root <- locate_project_root()
 source(file.path(project_root, "R", "anc_cond.R"))
 
 set.seed(654)
 
+# ---------- Cross-platform parallel plan ----------
+n_workers <- max(1, future::availableCores() - 1)  # leave one core free
+if (.Platform$OS.type == "windows") {
+  plan(multisession, workers = n_workers)
+} else {
+  plan(multicore, workers = n_workers)
+}
+on.exit(plan(sequential), add = TRUE)
+
+options(
+  future.globals.maxSize = 2 * 1024^3,  # 2 GB per worker
+  future.wait.timeout   = 30*60,        # 30 min per future
+  future.rng.onMisuse   = "ignore"
+)
+handlers(global = TRUE)  # enable progress bars
+
+# ---------- Helpers ----------
 simulate_unidirectional_dataset <- function(n_taxa, sigma, forward_rate, reverse_rate) {
   tree <- sim.bdtree(b = 3, d = 1, stop = c("taxa"), n = n_taxa, extinct = FALSE)
   tree$edge.length <- tree$edge.length / max(ape::branching.times(tree))
-  cont_trait <- as.numeric(geiger::sim.char(tree, par = sigma, model = "BM", nsim = 1))
+  
+  # fastBM is much faster than geiger::sim.char(..., "BM")
+  cont_trait <- phytools::fastBM(tree, sig2 = sigma)
   names(cont_trait) <- tree$tip.label
-  q_matrix <- matrix(c(-forward_rate, forward_rate, reverse_rate, -reverse_rate), nrow = 2, byrow = TRUE)
-  good_sim <- FALSE
-  while (!good_sim) {
-    disc_trait <- geiger::sim.char(
+  
+  # nearly unidirectional Q (rows sum to zero)
+  q_matrix <- matrix(c(-forward_rate, forward_rate,
+                       reverse_rate, -reverse_rate),
+                     nrow = 2, byrow = TRUE)
+  
+  # simulate discrete trait; reject near-fixed outcomes
+  good_sim <- FALSE; attempts <- 0L; max_attempts <- 1000L
+  disc_trait <- NULL
+  while (!good_sim && attempts < max_attempts) {
+    attempts <- attempts + 1L
+    sim_out <- geiger::sim.char(
       tree,
       par = q_matrix,
       model = "discrete",
       root = 1,
       nsim = 1
     )
-    freq <- mean(disc_trait == min(disc_trait))
-    good_sim <- freq > 0.05 && freq < 0.95
+    # matrix (tips x 1) or vector — normalize to integer vector
+    if (is.matrix(sim_out)) disc_trait <- sim_out[, 1, drop = TRUE] else disc_trait <- sim_out
+    disc_trait <- as.integer(disc_trait)
+    
+    freq <- mean(disc_trait == min(disc_trait), na.rm = TRUE)
+    good_sim <- is.finite(freq) && freq > 0.05 && freq < 0.95
   }
+  if (!good_sim) disc_trait <- rep(NA_integer_, length(tree$tip.label))
+  
   list(tree = tree, cont_trait = cont_trait, disc_trait = disc_trait)
 }
 
+# ---------- Main runner (parallel over trees with progress bar) ----------
 run_taxa_unidirectional <- function(n_trees = 20,
-                                    #taxa_grid = seq(20, 200, length.out = 5),
-                                    taxa_grid = c(20),
+                                    taxa_grid = seq(20, 200, length.out = 5),
+                                    # taxa_grid = c(20),
                                     forward_rate = 0.2,
                                     reverse_rate = 1e-04,
                                     sigma = 0.2,
                                     nsim = 10,
                                     iter = 200,
-                                    verbose = FALSE) {
+                                    verbose = TRUE,
+                                    checkpoint_dir = file.path(project_root, "results", "taxa_uni_checkpoints")) {
+  
+  dir.create(checkpoint_dir, showWarnings = FALSE, recursive = TRUE)
+  
   results <- vector("list", length(taxa_grid))
   names(results) <- paste0("taxa_", taxa_grid)
-  for (i in seq_along(taxa_grid)) {
-    n_taxa <- taxa_grid[i]
-    taxa_results <- vector("list", n_trees)
-    for (t in seq_len(n_trees)) {
-      if (verbose) {
-        message("Tree ", t, " of ", n_trees, ", taxa ", n_taxa)
-      }
-      dataset <- simulate_unidirectional_dataset(n_taxa, sigma, forward_rate, reverse_rate)
-      data_frame <- data.frame(
-        taxon = dataset$tree$tip.label,
-        cont = dataset$cont_trait,
-        disc = dataset$disc_trait
+  
+  for (n_taxa in taxa_grid) {
+    if (verbose) message(sprintf("Taxa %s using %d workers", n_taxa, n_workers))
+    
+    with_progress({
+      p <- progressor(steps = n_trees)  # one tick per tree
+      
+      taxa_results <- future_lapply(
+        seq_len(n_trees),
+        function(t) {
+          p(sprintf("taxa %s: tree %d/%d", n_taxa, t, n_trees))
+          
+          ds <- simulate_unidirectional_dataset(n_taxa, sigma, forward_rate, reverse_rate)
+          
+          if (anyNA(ds$disc_trait)) {
+            return(c(p12 = NA_real_, p21 = NA_real_))
+          }
+          
+          df <- data.frame(
+            taxon = ds$tree$tip.label,
+            cont  = ds$cont_trait,
+            disc  = ds$disc_trait
+          )
+          
+          anc <- AncCond(
+            tree = ds$tree,
+            data = df,
+            drop.state = 2,          # as in your original nearly-unidirectional setup
+            nsim = nsim,
+            iter = iter,
+            mat  = c(0, 0, 1, 0),    # unidirectional matrix for make.simmap
+            message = FALSE
+          )
+          
+          c(p12 = anc$pvals[["12"]], p21 = anc$pvals[["21"]])
+        },
+        future.seed = TRUE
       )
-      anc_result <- AncCond(
-        tree = dataset$tree,
-        data = data_frame,
-        drop.state = 2,
-        nsim = nsim,
-        iter = iter,
-        mat = c(0, 0, 1, 0),
-        message = FALSE
-      )
-      taxa_results[[t]] <- c(p12 = anc_result$pvals[["12"]], p21 = anc_result$pvals[["21"]])
-    }
-    results[[i]] <- do.call(rbind, taxa_results)
+      
+      mat <- do.call(rbind, taxa_results)
+      results[[paste0("taxa_", n_taxa)]] <- mat
+      
+      # checkpoint per taxa level
+      saveRDS(mat, file = file.path(checkpoint_dir, sprintf("tmp_taxa_uni_%s.rds", n_taxa)))
+      
+      if (verbose) message(sprintf("Finished taxa %s: %d/%d trees", n_taxa, nrow(mat), n_trees))
+    })
   }
+  
   results
 }
 
+# ---------- Script entry ----------
 if (sys.nframe() == 0) {
-  dir.create(file.path(project_root, "results"), showWarnings = FALSE)
-  taxa_results <- run_taxa_unidirectional()
-  saveRDS(taxa_results, file = file.path(project_root, "results", "taxa_unidirectional_results.rds"))
+  dir.create(file.path(project_root, "results"), showWarnings = FALSE, recursive = TRUE)
+  
+  taxa_results <- run_taxa_unidirectional(
+    n_trees = 20,
+    taxa_grid = seq(20, 200, length.out = 5),  # or c(20)
+    forward_rate = 0.2,
+    reverse_rate = 1e-04,
+    sigma = 0.2,
+    nsim = 10,
+    iter = 200,
+    verbose = TRUE
+  )
+  
+  rds_path   <- file.path(project_root, "results", "taxa_unidirectional_results.rds")
+  rdata_path <- file.path(project_root, "results", "taxa_unidirectional_results.RData")
+  
+  saveRDS(taxa_results, file = rds_path)
+  sess <- sessionInfo()
+  save(taxa_results, sess, file = rdata_path)
+  
+  message("Saved results to:\n  ", rds_path, "\n  ", rdata_path)
 }
