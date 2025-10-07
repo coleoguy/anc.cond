@@ -1,171 +1,138 @@
 #!/usr/bin/env Rscript
-# Scaling bidirectional analysis — minimal edits to ensure saving results
+# Bidirectional scaling simulation (parallel parLapply, NO functions)
 
-suppressPackageStartupMessages({
-  library(phytools)
-  library(diversitree)
-  library(geiger)
-  library(future)
-  library(future.apply)
-  library(progressr)
+library(phytools)
+library(geiger)
+library(parallel)
+library(evobiR)
+
+set.seed(321)
+source("~/GitHub/evobir/R/AncCond.R", keep.source = TRUE)
+
+## ---- parameters (were formerly function args) ----
+n_trees         <- 10
+n_taxa          <- 200
+scaling_factors <- c(1)
+rate            <- 0.6
+cont_sigma      <- 0.2
+iter            <- 200
+verbose         <- TRUE
+
+## ---- rate matrix ----
+rate_matrix <- matrix(c(-rate, rate,
+                        rate, -rate),
+                      nrow = 2, byrow = TRUE)
+
+## ---- start cluster (Windows: PSOCK) ----
+n_workers <- max(1L, parallel::detectCores() - 1L)
+cl <- parallel::makeCluster(n_workers)
+on.exit(parallel::stopCluster(cl), add = TRUE)
+
+parallel::clusterEvalQ(cl, {
+  library(phytools); library(geiger)
+  source("~/GitHub/evobir/R/AncCond.R", local = TRUE)
+  NULL
 })
 
-# ---------- Project root ----------
-locate_project_root <- function() {
-  file_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
-  if (length(file_arg) == 1) return(normalizePath(file.path(dirname(sub("^--file=", "", file_arg)), "..")))
-  if (file.exists(file.path("R", "anc_cond.R"))) return(normalizePath("."))
-  normalizePath("..")
-}
-project_root <- locate_project_root()
-source(file.path(project_root, "R", "anc_cond.R"))
-
-set.seed(123)
-
-# Run even when sourcing (set FALSE to restore “Rscript-only” behavior)
-force_run <- TRUE
-
-# ---------- Parallel plan ----------
-n_workers <- max(1, future::availableCores() - 1)
-if (.Platform$OS.type == "windows") {
-  plan(multisession, workers = n_workers)
-} else {
-  plan(multicore, workers = n_workers)
-}
-on.exit(plan(sequential), add = TRUE)
-
-options(
-  future.globals.maxSize = 2 * 1024^3,
-  future.wait.timeout   = 30*60,
-  future.rng.onMisuse   = "ignore"
+# Export shared objects workers need (per-run constants here)
+parallel::clusterExport(
+  cl,
+  varlist = c("rate_matrix", "n_taxa", "cont_sigma", "iter"),
+  envir = environment()
 )
-handlers(global = TRUE)
 
-# ---------- Helpers ----------
-branch_means <- function(tree, cont_trait) {
-  cont_asr <- phytools::anc.ML(tree, cont_trait, model = "BM")
-  means <- numeric(nrow(tree$edge))
-  for (i in seq_len(nrow(tree$edge))) {
-    parent <- tree$edge[i, 1]
-    child  <- tree$edge[i, 2]
-    parent_val <- if (parent <= length(tree$tip.label)) cont_trait[parent] else cont_asr$ace[as.character(parent)]
-    child_val  <- if (child  <= length(tree$tip.label)) cont_trait[child]  else cont_asr$ace[as.character(child)]
-    means[i] <- (parent_val + child_val) / 2
-  }
-  list(means = means, asr = cont_asr)
-}
+parallel::clusterSetRNGStream(cl, 321) # reproducible RNG
 
-scale_tree_by_branch_means <- function(tree, branch_info, scale_factor) {
-  scaled <- tree
-  quantiles <- stats::quantile(branch_info$means, probs = c(0.25, 0.75))
-  below <- branch_info$means < quantiles[[1]]
-  above <- branch_info$means > quantiles[[2]]
-  scaled$edge.length[below] <- scaled$edge.length[below] / scale_factor
-  scaled$edge.length[above] <- scaled$edge.length[above] * scale_factor
-  scaled
-}
+## ---- container for results ----
+results <- vector("list", length(scaling_factors))
+names(results) <- paste0("scale_", scaling_factors)
 
-simulate_dataset <- function(n_taxa, cont_sigma) {
-  base_tree <- sim.bdtree(b = 3, d = 1, stop = c("taxa"), n = n_taxa, extinct = FALSE)
-  base_tree$edge.length <- base_tree$edge.length / max(ape::branching.times(base_tree))
-  # swap to fastBM for speed; keep sigma naming the same
-  cont_trait <- phytools::fastBM(base_tree, sig2 = cont_sigma)
-  names(cont_trait) <- base_tree$tip.label
-  bm <- branch_means(base_tree, cont_trait)
-  list(tree = base_tree, cont_trait = cont_trait, branch_info = bm)
-}
-
-# ---------- Main ----------
-run_scaling_bidirectional <- function(n_trees = 10,
-                                      n_taxa = 200,
-                                      scaling_factors = c(1, 2, 4, 8),
-                                      rate = 0.6,
-                                      cont_sigma = 0.2,
-                                      nsim = 10,
-                                      iter = 200,
-                                      verbose = TRUE,
-                                      checkpoint_dir = file.path(project_root, "results", "scale_bi_checkpoints")) {
+## ---- loop over scaling factors; parLapply across trees ----
+for (sf_idx in seq_along(scaling_factors)) {
+  sf <- scaling_factors[sf_idx]
+  if (verbose) message(sprintf("Scale %s using %d workers", sf, n_workers))
   
-  dir.create(checkpoint_dir, showWarnings = FALSE, recursive = TRUE)
+  # export the current sf to workers each iteration
+  parallel::clusterExport(cl, varlist = "sf", envir = environment())
   
-  rate_matrix <- matrix(c(-rate, rate, rate, -rate), nrow = 2, byrow = TRUE)
-  results <- vector("list", length(scaling_factors))
-  names(results) <- paste0("scale_", scaling_factors)
-  
-  with_progress({
-    p <- progressor(steps = length(scaling_factors))
+  bi_tree_results <- parallel::parLapply(cl, seq_len(n_trees), function(t) {
+    ## simulate tree + continuous trait
+    tree <- sim.bdtree(b = 3, d = 1, stop = c("taxa"), n = n_taxa, extinct = FALSE)
+    tree$edge.length <- tree$edge.length / max(ape::branching.times(tree))
+    cont_trait <- phytools::fastBM(tree, sig2 = cont_sigma)
+    names(cont_trait) <- tree$tip.label
     
-    for (sf in seq_along(scaling_factors)) {
-      current_sf <- scaling_factors[sf]
-      if (verbose) message(sprintf("Scale %s using %d workers", current_sf, n_workers))
-      
-      sf_results <- future_lapply(seq_len(n_trees), function(t) {
-        ds <- simulate_dataset(n_taxa, cont_sigma)
-        scaled_tree <- scale_tree_by_branch_means(ds$tree, ds$branch_info, current_sf)
-        
-        sim_out <- geiger::sim.char(
-          scaled_tree,
-          par = rate_matrix,
-          model = "discrete",
-          root = sample(1:2, 1),
-          nsim = 1
-        )
-        disc_trait <- if (is.matrix(sim_out)) sim_out[, 1, drop = TRUE] else sim_out
-        disc_trait <- as.integer(disc_trait)
-        
-        df <- data.frame(
-          taxon = ds$tree$tip.label,
-          cont  = ds$cont_trait,
-          disc  = disc_trait
-        )
-        
-        anc <- AncCond(
-          tree = scaled_tree,
-          data = df,
-          nsim = nsim,
-          iter = iter,
-          mat  = c(0, 2, 1, 0),
-          message = FALSE
-        )
-        
-        c(p12 = anc$pvals[["12"]], p21 = anc$pvals[["21"]])
-      }, future.seed = TRUE)
-      
-      sf_mat <- do.call(rbind, sf_results)
-      results[[sf]] <- sf_mat
-      
-      # checkpoint per scale
-      saveRDS(sf_mat, file = file.path(checkpoint_dir, sprintf("tmp_scale_bi_%s.rds", current_sf)))
-      if (verbose) message(sprintf("Finished scale %s: %d/%d trees", current_sf, nrow(sf_mat), n_trees))
-      
-      p()
+    ## compute branch means (ASR on continuous trait)
+    cont_asr <- phytools::anc.ML(tree, cont_trait, model = "BM")
+    bmeans <- numeric(nrow(tree$edge))
+    for (i in seq_len(nrow(tree$edge))) {
+      parent <- tree$edge[i, 1]
+      child  <- tree$edge[i, 2]
+      parent_val <- if (parent <= length(tree$tip.label)) cont_trait[parent] else cont_asr$ace[as.character(parent)]
+      child_val  <- if (child  <= length(tree$tip.label)) cont_trait[child]  else cont_asr$ace[as.character(child)]
+      bmeans[i] <- (parent_val + child_val) / 2
+    }
+    
+    ## scale edges by branch-mean quantiles
+    scaled_tree <- tree
+    qs <- stats::quantile(bmeans, probs = c(0.25, 0.75))
+    scaled_tree$edge.length[bmeans < qs[[1]]] <- scaled_tree$edge.length[bmeans < qs[[1]]] / sf
+    scaled_tree$edge.length[bmeans > qs[[2]]] <- scaled_tree$edge.length[bmeans > qs[[2]]] * sf
+    
+    ## simulate discrete until not near-fixed
+    good_sim <- FALSE
+    attempts <- 0L
+    max_attempts <- 1000L
+    disc_trait <- NULL
+    
+    while (!good_sim && attempts < max_attempts) {
+      attempts <- attempts + 1L
+      sim_out <- geiger::sim.char(
+        scaled_tree,
+        par = rate_matrix,
+        model = "discrete",
+        root = 1,
+        nsim = 1
+      )
+      disc_trait <- sim_out[, , 1]
+      disc_trait <- as.integer(disc_trait)
+      freq <- mean(disc_trait == min(disc_trait), na.rm = TRUE)
+      good_sim <- is.finite(freq) && freq > 0.05 && freq < 0.95
+    }
+    
+    if (!good_sim) return(c(p12 = NA_real_, p21 = NA_real_))
+    
+    ## assemble data frame for AncCond
+    df <- data.frame(
+      taxon = scaled_tree$tip.label,
+      cont  = cont_trait,
+      disc  = disc_trait
+    )
+    
+    ## AncCond (bidirectional)
+    anc <- AncCond(
+      tree = scaled_tree,
+      data = df,
+      mc   = as.integer(iter),
+      drop.state = NULL,
+      mat  = c(0, 2, 1, 0),
+      message = FALSE
+    )
+    
+    ## return p-values in a consistent shape
+    if (is.list(anc) && "pval1->2" %in% names(anc) && "pval2->1" %in% names(anc)) {
+      c(p12 = anc[["pval1->2"]], p21 = anc[["pval2->1"]])
+    } else if (is.list(anc) && "pval" %in% names(anc)) {
+      c(p12 = anc[["pval"]], p21 = NA_real_)
+    } else {
+      c(p12 = NA_real_, p21 = NA_real_)
     }
   })
   
-  results
+  results[[sf_idx]] <- do.call(rbind, bi_tree_results)
+  colnames(results[[sf_idx]]) <- c("p12", "p21")
 }
 
-# ---------- Entry point (ensures saving) ----------
-if (force_run || sys.nframe() == 0) {
-  dir.create(file.path(project_root, "results"), showWarnings = FALSE, recursive = TRUE)
-  
-  scaling_results <- run_scaling_bidirectional(
-    n_trees = 10,
-    n_taxa = 200,
-    scaling_factors = c(1, 2, 4, 8),
-    rate = 0.6,
-    cont_sigma = 0.2,
-    nsim = 10,
-    iter = 200,
-    verbose = TRUE
-  )
-  
-  rds_path   <- file.path(project_root, "results", "scaling_bidirectional_results.rds")
-  rdata_path <- file.path(project_root, "results", "scaling_bidirectional_results.RData")
-  
-  saveRDS(scaling_results, file = rds_path)
-  sess <- sessionInfo()
-  save(scaling_results, sess, file = rdata_path)
-  
-  message("Saved results to:\n  ", rds_path, "\n  ", rdata_path)
-}
+## ---- save ----
+save(results, file='../../results/scaling_bidirectional_results.RData')
+

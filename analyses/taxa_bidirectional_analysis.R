@@ -94,7 +94,7 @@ run_taxa_bidirectional <- function(n_trees = 20,
     with_progress({
       p <- progressor(steps = n_trees)  # one tick per tree at this taxa level
       
-      taxa_results <- future_lapply(
+      bi_taxa_results <- future_lapply(
         seq_len(n_trees),
         function(t) {
           p(sprintf("taxa %s: tree %d/%d", n_taxa, t, n_trees))
@@ -125,7 +125,7 @@ run_taxa_bidirectional <- function(n_trees = 20,
         future.seed = TRUE
       )
       
-      mat <- do.call(rbind, taxa_results)
+      mat <- do.call(rbind, bi_taxa_results)
       results[[paste0("taxa_", n_taxa)]] <- mat
       
       # checkpoint after each taxa level
@@ -142,7 +142,7 @@ run_taxa_bidirectional <- function(n_trees = 20,
 if (sys.nframe() == 0) {
   dir.create(file.path(project_root, "results"), showWarnings = FALSE, recursive = TRUE)
   
-  taxa_results <- run_taxa_bidirectional(
+  bi_taxa_results <- run_taxa_bidirectional(
     n_trees = 20,
     taxa_grid = c(20),  # or: seq(20, 200, length.out = 5)
     rate = 0.6,
@@ -155,9 +155,9 @@ if (sys.nframe() == 0) {
   rds_path   <- file.path(project_root, "results", "taxa_bidirectional_results.rds")
   rdata_path <- file.path(project_root, "results", "taxa_bidirectional_results.RData")
   
-  saveRDS(taxa_results, file = rds_path)
+  saveRDS(bi_taxa_results, file = rds_path)
   sess <- sessionInfo()
-  save(taxa_results, sess, file = rdata_path)
+  save(bi_taxa_results, sess, file = rdata_path)
   
   message("Saved results to:\n  ", rds_path, "\n  ", rdata_path)
 }
