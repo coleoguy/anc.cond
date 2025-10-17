@@ -96,7 +96,7 @@ for (si in seq_along(unidirectional_results)) {
         disc  = y
       )
       
-      # AncCond 
+      # AncCond
       ac_res <- tryCatch(
         evobiR::AncCond(
           tree = tr,
