@@ -24,7 +24,7 @@ if (!exists("bd_trees")) {
     trees_for_n <- vector("list", reps)
     k <- 0
     while (k < reps) {
-      batch <- TreeSim::sim.bd.taxa(n = n, numbsim = reps, lambda = lambda, mu = mu, complete = TRUE)
+      batch <- TreeSim::sim.bd.taxa(n = n, numbsim = reps, lambda = lambda, mu = mu, complete = FALSE)
       for (j in seq_along(batch)) {
         tr <- batch[[j]]
         if (!is.null(tr)) {
@@ -37,7 +37,7 @@ if (!exists("bd_trees")) {
     bd_trees[[as.character(n)]] <- trees_for_n
   }
 }
-sizes <- as.integer(names(bd_trees))
+rm(list=ls()[-2])
 
 # ============== 1) Scenarios & params ==============
 scenario_names <- c("uni", "bi")
@@ -54,18 +54,17 @@ for (s in seq_along(scenario_names)) {
   scen <- scenario_names[s]
   forward_rate <- forward_rates[s]
   reverse_rate <- reverse_rates[s]
-  
   # generator
   q_matrix <- matrix(c(-forward_rate, forward_rate,
                        reverse_rate, -reverse_rate),
                      nrow = 2, byrow = TRUE)
   dimnames(q_matrix) <- list(c("1","2"), c("1","2"))
-  
   # stationary (for BI root draws)
   denom <- forward_rate + reverse_rate
   pi1 <- if (denom > 0) reverse_rate / denom else 1.0
   pi2 <- if (denom > 0) forward_rate / denom else 0.0
   
+  sizes <- as.integer(names(bd_trees))
   per_scen_results <- setNames(vector("list", length(sizes)), as.character(sizes))
   per_scen_sf      <- setNames(vector("list", length(sizes)), as.character(sizes))
   

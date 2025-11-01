@@ -7,7 +7,7 @@
 
 #' Run the ancestral condition test.
 #'
-#' @param tree A phytools::phylo object.
+#' @param tree A phylo object.
 #' @param data A data.frame with three columns: tip labels, continuous trait,
 #'   and discrete trait (coded as 1/2).
 #' @param drop.state Optional discrete state (1 or 2) to drop from the
