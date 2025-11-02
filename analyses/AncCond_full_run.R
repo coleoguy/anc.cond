@@ -8,10 +8,14 @@ library(ape)
 library(phytools)
 
 # ---- Path to your saved data ----
-base_dir <- "C:/Users/mcconnell.m.meghann/Documents/GitHub/anc.cond/results"
+# ---- Use the working directory for ALL I/O ----
+base_dir <- getwd()
+if (!file.exists(file.path(base_dir, "sim_tree_data.RData"))) {
+  stop("sim_tree_data.RData not found in working directory: ", base_dir)
+}
 load(file.path(base_dir, "sim_tree_data.RData"))  # loads 'sim_tree_data'
 
-if (!exists("sim_tree_data")) stop("sim_tree_data not found.")
+if (!exists("sim_tree_data")) stop("sim_tree_data not found after load().")
 if (!all(c("bd_trees","sim_results","sf_trees") %in% names(sim_tree_data))) {
   stop("sim_tree_data must contain bd_trees, sim_results, and sf_trees.")
 }
@@ -210,5 +214,5 @@ if (verbose) message("Saved bidirectional_results.RData")
 
 # ------------------------------------------------------------
 # Optional quick peek:
-# str(unidirectional_results[["25"]][[1]][["sf1"]]$anccond)
-# str(bidirectional_results [["100"]][[10]][["sf3"]]$anccond)
+str(unidirectional_results[["25"]][[1]][["sf1"]]$anccond)
+str(bidirectional_results [["100"]][[10]][["sf3"]]$anccond)
