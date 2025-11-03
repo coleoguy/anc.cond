@@ -3,7 +3,6 @@
 # ------------------------------------------------------------
 
 # Packages
-library(evobiR)
 library(ape)
 library(phytools)
 
@@ -60,7 +59,7 @@ for (si in seq_along(unidirectional_results)) {
     
     # Prepare per-tree container indexed by the sf names we want
     available_sfs <- intersect(names(tr_scaled_set), all_sf_names)
-   
+    
     per_tree_out <- setNames(vector("list", length(available_sfs)), available_sfs)
     
     # Pull continuous once (we’ll align to each scaled tree's tip labels)
@@ -87,16 +86,22 @@ for (si in seq_along(unidirectional_results)) {
       )
       
       # AncCond
-      ac_res_uni <-
+      AncCond <- get("AncCond", envir = .GlobalEnv)
+      ac_res_auni<-
         AncCond(
-          tree = tr,
-          data = df,
-          derived.state = 2
-        )
+          tree = tr, 
+          data = df, 
+          drop.state = 2,
+          mat = c(0, 1, 0, 0),
+          pi = "estimated",
+          n.tails = 1,
+          nsim = 100,
+          iter = 100,
+          message = FALSE)
       
       per_tree_out[[sfi]] <- list(
         sf_name   = sf_name,
-        anccond   = ac_res_uni,
+        anccond   = ac_res_auni,
         n_tips    = length(tr$tip.label),
         cont_trait= x,
         disc_trait= y,
@@ -113,7 +118,7 @@ for (si in seq_along(unidirectional_results)) {
 }
 
 save(unidirectional_results,
-     file = ("unidirectional_results.RData"))
+     file = ("unidirectional_results_anc.RData"))
 
 
 # ============================================================
@@ -152,15 +157,21 @@ for (si in seq_along(bidirectional_results)) {
         cont  = x,
         disc  = y
       )
-          ac_res_bi <- AncCond(
-              tree = tr,
-              data = df,
-              derived.state = 2
-            )
+      
+      AncCond <- get("AncCond", envir = .GlobalEnv)
+      ac_res_abi <- AncCond(tree = tr, 
+                            data = df, 
+                            drop.state = NULL,
+                            mat = c(0, 2, 1, 0),
+                            pi = "estimated",
+                            n.tails = 1,
+                            nsim = 100,
+                            iter = 100,
+                            message = FALSE)
       
       per_tree_out[[sfi]] <- list(
         sf_name     = sf_name,
-        anccond     = ac_res_bi,
+        anccond     = ac_res_abi,
         n_tips      = length(tr$tip.label),
         cont_trait  = x,
         disc_trait  = y,
@@ -177,7 +188,7 @@ for (si in seq_along(bidirectional_results)) {
 }
 
 save(bidirectional_results,
-     file = ("bidirectional_results.RData"))
+     file = ("bidirectional_results_anc.RData"))
 # ------------------------------------------------------------
 # Optional quick peek:
 str(unidirectional_results[["25"]][[1]][["sf1"]]$anccond)
