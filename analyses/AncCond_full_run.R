@@ -1,184 +1,105 @@
 # ------------------------------------------------------------
-# Run AncCond on selected scaling factors using sim_tree_data
+# Run AncCond on selected scaling factors using sim_data,RData
 # ------------------------------------------------------------
 
 # Packages
-library(evobiR)
 library(ape)
 library(phytools)
+library(foreach)
+library(doParallel)
+
+num_cores <- detectCores() - 1
+# 2. Setup the cluster (This works on Mac, Linux, and Windows)
+# This creates a set of copies of R running in the background
+my_cluster <- makeCluster(num_cores)
+# 3. Register the cluster so 'foreach' knows to use it
+registerDoParallel(my_cluster)
+
+print(paste("Cluster registered with", getDoParWorkers(), "cores"))
+
 
 # ---- Path to your saved data ----
 # ---- Use the working directory for ALL I/O ----
-load("sim_tree_data.RData")  # loads 'sim_tree_data'
-
-bd_trees    <- sim_tree_data$bd_trees
-sim_results <- sim_tree_data$sim_results
-sf_trees    <- sim_tree_data$sf_trees
-
-# ---- Choose exactly which scaling factors to run ----
-# e.g., c(1, 3, 5, 10) or just 1:10
-scaling_factors <- c(1)
 
 # ---- AncCond settings ----
-iter    <- 1000      # mc reps inside AncCond
+iter    <- 2      # mc reps inside AncCond
 verbose <- TRUE
 
-# If you use a custom AncCond, you can source it (optional):
-# source("~/GitHub/evobir/R/AncCond.R", keep.source = TRUE)
 
 # We’ll store results per scenario, per size, per tree, per sf
-scenario_names <- c("uni", "bi")
-
-# Containers for outputs
-unidirectional_results <- setNames(vector("list", length(sim_results[["uni"]])),
-                                   names(sim_results[["uni"]]))
-bidirectional_results  <- setNames(vector("list", length(sim_results[["bi"]])),
-                                   names(sim_results[["bi"]]))
-
-# ============================================================
-# Helper to ensure requested sf exist in data (names are "sf1".."sf10")
-# ============================================================
-all_sf_names <- paste0("sf", scaling_factors)
-
-# ============================================================
-# Unidirectional
-# ============================================================
-for (si in seq_along(unidirectional_results)) {
-  size_name <- names(unidirectional_results)[si]
-  
-  # Per-size lists from sim_tree_data
-  uni_runs <- sim_results[["uni"]][[size_name]]           # traits per original tree
-  sf_set   <- sf_trees   [["uni"]][[size_name]]           # scaled trees per original tree
-  
-  if (verbose) message(sprintf("[UNI] %s tips: %d trees", size_name, length(uni_runs)))
-  
-  per_size_out <- vector("list", length(uni_runs))
-  
-  for (ti in seq_along(uni_runs)) {
-    rec <- uni_runs[[ti]]
-    tr_scaled_set <- sf_set[[ti]]        # list: sf1..sf10 trees
-    
-    # Prepare per-tree container indexed by the sf names we want
-    available_sfs <- intersect(names(tr_scaled_set), all_sf_names)
-   
-    per_tree_out <- setNames(vector("list", length(available_sfs)), available_sfs)
-    
-    # Pull continuous once (we’ll align to each scaled tree's tip labels)
-    cont_trait <- rec$cont_trait
-    
-    # Discrete traits per sf (from your new pipeline)
-    disc_by_sf <- rec$disc_by_sf
-    
-    for (sfi in seq_along(available_sfs)) {
-      sf_name <- available_sfs[sfi]
-      tr      <- tr_scaled_set[[sf_name]]          # scaled phylo
-      disc    <- disc_by_sf[[sf_name]]             # "1"/"2" per tip for this scaled tree
-      
-      # Align vectors to tree tip order
-      x <- cont_trait[tr$tip.label]                # numeric
-      y <- as.integer(disc[tr$tip.label])          # 1/2 integers to match your AncCond call
-      # (drop.state = 2 expects state "2" to be droppable)
-      
-      # Construct data frame 
-      df <- data.frame(
-        taxon = tr$tip.label,
-        cont  = x,
-        disc  = y
-      )
-      
-      # AncCond
-      ac_res_uni <-
-        AncCond(
-          tree = tr,
-          data = df,
-          derived.state = 2
-        )
-      
-      per_tree_out[[sfi]] <- list(
-        sf_name   = sf_name,
-        anccond   = ac_res_uni,
-        n_tips    = length(tr$tip.label),
-        cont_trait= x,
-        disc_trait= y,
-        Q         = rec$Q,              # store the uni matrix used in sim
-        root_info = rec$root_by_sf[[sf_name]],
-        iter      = iter
-      )
+result.list <- replicate(
+  2,  # level 1
+  replicate(
+    5,  # level 2
+    replicate(
+      100,  # level 3
+      as.list(rep(NA, 10)),  # level 4: list of 10 elements
+      simplify = FALSE
+    ),
+    simplify = FALSE
+  ),
+  simplify = FALSE
+)
+load("../data/sim_data.RData")  # loads 'sim_tree_data'
+names(result.list) <- names(sim_data)
+names(sim_data[[1]])
+for(i in 1:2){
+  names(result.list[[i]]) <- names(sim_data[[1]])
+  for(j in 1:5){
+    names(result.list[[i]][[j]]) <- 1:100
+    for(k in 1:100){
+      names(result.list[[i]][[j]][[k]]) <- names(sim_data[[i]][[j]][[k]]$disc_by_sf)
     }
-    
-    per_size_out[[ti]] <- per_tree_out
   }
-  
-  unidirectional_results[[si]] <- per_size_out
+}
+scenario_names <- names(sim_data)
+
+# ============================================================
+# Running AncCond
+# ============================================================
+for(scen in seq_along(sim_data)){
+  for (si in seq_along(sim_data[[scen]])) {
+    size_name <- names(sim_data[[scen]])[si]
+    if (verbose) message(sprintf("working on %s %s tip trees",  
+                                 scenario_names[scen], size_name[si]))
+    parallel_results <- foreach(reps = seq_along(sim_data[[scen]][[si]])) %dopar% {
+                                  library(ape)
+                                  library(phytools)
+                                  source("AncCond.R", keep.source = TRUE)
+                                  load("../data/sim_data.RData")  # loads 'sim_tree_data'
+                                  temp.res <- list()
+                                    cur_dat <- sim_data[[scen]][[si]][[reps]]           # traits per original tree
+                                    for(sf.strength in seq_along(sim_data[[scen]][[si]][[reps]]$disc_by_sf)){
+                                      df <- data.frame(names(cur_dat$cont_trait),
+                                                       cur_dat$cont_trait,
+                                                       cur_dat$disc_by_sf[[sf.strength]])
+                                      if(scen == 1){
+                                        res <- AncCond(tree = cur_dat$tree,
+                                                       data = df,
+                                                       mat = c(0,0,1,0),
+                                                       mc = iter)
+                                      }
+                                      if(scen == 2){
+                                        res <- AncCond(tree = cur_dat$tree,
+                                                       data = df,
+                                                       mat = c(0,2,1,0),
+                                                       mc = iter)
+                                      }
+                                      temp.res[[sf.strength]] <- res
+                                    }
+                                    temp.res
+                                }
+    result.list[[scen]][[si]] <- parallel_results
+  }
 }
 
-save(unidirectional_results,
-     file = ("unidirectional_results.RData"))
 
 
-# ============================================================
-# Bidirectional
-# ============================================================
-for (si in seq_along(bidirectional_results)) {
-  size_name <- names(bidirectional_results)[si]
-  
-  bi_runs <- sim_results[["bi"]][[size_name]]
-  sf_set  <- sf_trees   [["bi"]][[size_name]]
-  
-  if (verbose) message(sprintf("[BI ] %s tips: %d trees", size_name, length(bi_runs)))
-  
-  per_size_out <- vector("list", length(bi_runs))
-  
-  for (ti in seq_along(bi_runs)) {
-    rec <- bi_runs[[ti]]
-    tr_scaled_set <- sf_set[[ti]]
-    
-    available_sfs <- intersect(names(tr_scaled_set), all_sf_names)
-    per_tree_out <- setNames(vector("list", length(available_sfs)), available_sfs)
-    
-    cont_trait <- rec$cont_trait
-    disc_by_sf <- rec$disc_by_sf
-    
-    for (sfi in seq_along(available_sfs)) {
-      sf_name <- available_sfs[sfi]
-      tr      <- tr_scaled_set[[sf_name]]
-      disc    <- disc_by_sf[[sf_name]]
-      
-      x <- cont_trait[tr$tip.label]
-      y <- as.integer(disc[tr$tip.label])   # 1/2 integers
-      
-      df <- data.frame(
-        taxon = tr$tip.label,
-        cont  = x,
-        disc  = y
-      )
-          ac_res_bi <- AncCond(
-              tree = tr,
-              data = df,
-              derived.state = 2
-            )
-      
-      per_tree_out[[sfi]] <- list(
-        sf_name     = sf_name,
-        anccond     = ac_res_bi,
-        n_tips      = length(tr$tip.label),
-        cont_trait  = x,
-        disc_trait  = y,
-        rate_matrix = rec$rate_matrix,         # store the bi matrix used in sim
-        root_info   = rec$root_by_sf[[sf_name]],
-        iter        = iter
-      )
-    }
-    
-    per_size_out[[ti]] <- per_tree_out
-  }
-  
-  bidirectional_results[[si]] <- per_size_out
-}
 
-save(bidirectional_results,
-     file = ("bidirectional_results.RData"))
-# ------------------------------------------------------------
-# Optional quick peek:
-str(unidirectional_results[["25"]][[1]][["sf1"]]$anccond)
-str(bidirectional_results [["100"]][[10]][["sf3"]]$anccond)
+  sim.results <- result.list
+  save(result.list,
+       file = ("../results/sim.results.RData"))
+  
+  
+  
+  

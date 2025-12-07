@@ -187,8 +187,10 @@ for (s in seq_along(scenario_names)) {
   sim_results[[scen]] <- per_scen_results
 }
 ##### End Discrete Trait Simulation ##########
-save(sim_results,
-     file = "../data/sim_results.RData")
-message("Saved simulated data to /data/sim_results.RData")
+# make name clearer
+sim_data <- sim_results
+save(sim_data,
+     file = "../data/sim_data.RData")
+message("Saved simulated data to /data/sim_data.RData")
 
 
