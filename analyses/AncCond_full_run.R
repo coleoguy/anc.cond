@@ -8,7 +8,7 @@ library(phytools)
 library(foreach)
 library(doParallel)
 
-num_cores <- detectCores() - 1
+num_cores <- detectCores() - 10
 # 2. Setup the cluster (This works on Mac, Linux, and Windows)
 # This creates a set of copies of R running in the background
 my_cluster <- makeCluster(num_cores)
@@ -22,7 +22,7 @@ print(paste("Cluster registered with", getDoParWorkers(), "cores"))
 # ---- Use the working directory for ALL I/O ----
 
 # ---- AncCond settings ----
-iter    <- 2      # mc reps inside AncCond
+iter    <- 1000      # mc reps inside AncCond
 verbose <- TRUE
 
 
@@ -61,7 +61,7 @@ for(scen in seq_along(sim_data)){
   for (si in seq_along(sim_data[[scen]])) {
     size_name <- names(sim_data[[scen]])[si]
     if (verbose) message(sprintf("working on %s %s tip trees",  
-                                 scenario_names[scen], size_name[si]))
+                                 scenario_names[scen], size_name))
     parallel_results <- foreach(reps = seq_along(sim_data[[scen]][[si]])) %dopar% {
                                   library(ape)
                                   library(phytools)
