@@ -14,7 +14,7 @@ set.seed(42)
 ########## 0) BD trees (reuse if already exist) ###########
 if (!exists("bd_trees")) {
   sizes  <- c(25, 50, 75, 100, 200)
-  reps   <- 100
+  reps   <- 1000
   lambda <- 3
   mu     <- 1
   bd_trees <- setNames(vector("list", 
