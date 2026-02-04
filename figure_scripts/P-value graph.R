@@ -3,7 +3,9 @@
 #############################
 load("~/GitHub/anc.cond/results/sim.results.RData")
 
-alpha     <- 0.05
+alpha_uni <- 0.025
+alpha_bi  <- 0.0125
+
 taxa_vals <- as.integer(names(result.list$uni))     # 25,50,75,100,200
 n_rep     <- length(result.list$uni[[1]])           # 100 trees
 n_sf      <- length(result.list$uni[[1]][[1]])      # 10 scaling factors
@@ -50,13 +52,13 @@ out <- data.frame(
 sig_uni <- function(obj) {
   p <- get_p_uni(obj)
   if (is.na(p)) return(NA)
-  p <= alpha
+  p <= alpha_uni
 }
 
 sig_bi <- function(obj) {
   vals <- get_p_bi_vec(obj)
   if (!length(vals)) return(NA)
-  any(vals <= alpha)
+  any(vals <= alpha_bi)
 }
 
 for (j in seq_along(taxa_vals)) {
@@ -91,6 +93,7 @@ for (j in seq_along(taxa_vals)) {
 }
 
 ## Plot: percent significant
+pdf("percent_significant_AncCond.pdf", width = 10, height = 7)
 par(mfrow = c(2, 3), mar = c(5, 4, 3, 1))
 
 for (i in seq_along(taxa_vals)) {
@@ -122,12 +125,18 @@ for (i in seq_along(taxa_vals)) {
   points(1, y_bi [x_sf == 1], pch = 0, cex = 1.3)  # bi FPR
   points(1, y_uni[x_sf == 1], pch = 4, cex = 1.3)  # uni FPR
   
-  abline(h = alpha, lty = 2)
+  # threshold lines (one per method)
+  abline(h = alpha_bi,  lty = 2, col = "blue")
+  abline(h = alpha_uni, lty = 2, col = "red")
   
   legend("topleft",
          legend = c("bidirectional power", "unidirectional power",
-                    "bidirectional false positive", "unidirectional false positive"),
-         pch    = c(16, 16, 0, 4),
-         col    = c("blue", "red", "black", "black"),
+                    "bidirectional false positive", "unidirectional false positive",
+                    "alpha bi", "alpha uni"),
+         pch    = c(16, 16, 0, 4, NA, NA),
+         lty    = c(NA, NA, NA, NA, 2, 2),
+         col    = c("blue", "red", "black", "black", "blue", "red"),
          bty    = "n", cex = 0.8)
 }
+
+dev.off()
