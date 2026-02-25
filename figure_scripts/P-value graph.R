@@ -1,13 +1,13 @@
 #############################
 ## Shared setup + helpers  ##
 #############################
-load("~/GitHub/anc.cond/results/sim.results.RData")
+load("~/GitHub/anc.cond/results/sim.results_UL.RData")
 
-alpha_uni <- 0.025
-alpha_bi  <- 0.0125
+alpha_uni <- 0.05
+alpha_bi  <- 0.025
 
 taxa_vals <- as.integer(names(result.list$uni))     # 25,50,75,100,200
-n_rep     <- length(result.list$uni[[1]])           # 100 trees
+n_rep     <- length(result.list$uni[[1]])           # 1000 trees
 n_sf      <- length(result.list$uni[[1]][[1]])      # 10 scaling factors
 
 # Unidirectional: single p-value

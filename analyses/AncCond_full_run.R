@@ -32,7 +32,7 @@ result.list <- replicate(
   replicate(
     5,  # level 2
     replicate(
-      100,  # level 3
+      1000,  # level 3
       as.list(rep(NA, 10)),  # level 4: list of 10 elements
       simplify = FALSE
     ),
@@ -40,14 +40,14 @@ result.list <- replicate(
   ),
   simplify = FALSE
 )
-load("../data/sim_data.RData")  # loads 'sim_tree_data'
+load("../data/sim_data_UL.RData")  # loads 'sim_data'
 names(result.list) <- names(sim_data)
 names(sim_data[[1]])
 for(i in 1:2){
   names(result.list[[i]]) <- names(sim_data[[1]])
   for(j in 1:5){
-    names(result.list[[i]][[j]]) <- 1:100
-    for(k in 1:100){
+    names(result.list[[i]][[j]]) <- 1:1000
+    for(k in 1:1000){
       names(result.list[[i]][[j]][[k]]) <- names(sim_data[[i]][[j]][[k]]$disc_by_sf)
     }
   }
@@ -66,7 +66,7 @@ for(scen in seq_along(sim_data)){
                                   library(ape)
                                   library(phytools)
                                   source("AncCond.R", keep.source = TRUE)
-                                  load("../data/sim_data.RData")  # loads 'sim_tree_data'
+                                  load("../data/sim_data_UL.RData")  # loads 'sim_data'
                                   temp.res <- list()
                                     cur_dat <- sim_data[[scen]][[si]][[reps]]           # traits per original tree
                                     for(sf.strength in seq_along(sim_data[[scen]][[si]][[reps]]$disc_by_sf)){
@@ -98,7 +98,7 @@ for(scen in seq_along(sim_data)){
 
   sim.results <- result.list
   save(result.list,
-       file = ("../results/sim.results.RData"))
+       file = ("../results/sim.results_UL.RData"))
   
   
   
