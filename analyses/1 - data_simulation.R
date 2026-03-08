@@ -2,6 +2,7 @@
 # sim_tree_data: BM tips -> scale (anc.ML) -> discrete per scaled tree
 # - For loops only; minimal changes from your prior script
 # - Stores per-sf discrete traits so analysis matches scaled trees
+# - All trees rescaled to unit height (max root-to-tip = 1.0)
 # ------------------------------------------------------------
 
 library(ape)
@@ -11,26 +12,47 @@ library(TreeSim)
 
 set.seed(42)
 
-########## 0) BD trees (reuse if already exist) ###########
-if (!exists("bd_trees")) {
-  sizes  <- c(25, 50, 75, 100, 200)
-  reps   <- 1000
-  lambda <- 3
-  mu     <- 1
-  bd_trees <- setNames(vector("list", 
-                              length(sizes)), 
-                       as.character(sizes))
-  for (i in seq_along(sizes)) {
-    n <- sizes[i]
-    message(sprintf("Simulating %d trees with %d tips...", reps, n))
-    bd_trees[[i]] <- TreeSim::sim.bd.taxa(n = n, numbsim = reps, 
-                                          lambda = lambda, mu = mu, 
-                                          complete = FALSE)
+########## 0) BD trees (simulate and rescale to unit height) ###########
+
+# Define Parameters
+sizes  <- c(25, 50, 75, 100, 200)
+reps   <- 1000
+lambda <- 3
+mu     <- 1
+
+# Initialize the container
+bd_trees <- setNames(vector("list", length(sizes)), as.character(sizes))
+
+# Outer Loop: Iterate through each size category
+for (i in seq_along(sizes)) {
+  n <- sizes[i]
+  message(sprintf("Simulating %d trees with %d tips...", reps, n))
+
+  # 1. Generate the raw trees for this size
+  raw_trees <- TreeSim::sim.bd.taxa(n = n, numbsim = reps,
+                                    lambda = lambda, mu = mu,
+                                    complete = FALSE)
+
+  # 2. Rescale each tree to unit height (1.0)
+  for (j in 1:reps) {
+    current_tree <- raw_trees[[j]]
+    max_h <- max(phytools::nodeHeights(current_tree))
+    current_tree$edge.length <- current_tree$edge.length / max_h
+    raw_trees[[j]] <- current_tree
   }
+
+  # Store the rescaled multiPhylo object
+  bd_trees[[i]] <- raw_trees
 }
-rm(list=ls()[-1])
-# leave here with bd_trees (orig tree no scaling)
-########## 0) BD trees (reuse if already exist) ###########
+
+# Clean up
+rm(list = ls()[!ls() %in% c("bd_trees")])
+
+# Verification Check
+message(sprintf("Verification: Tree height is now %f",
+                max(phytools::nodeHeights(bd_trees[[1]][[1]]))))
+# leave here with bd_trees (unit-height trees, no branch scaling)
+########## 0) BD trees (simulate and rescale to unit height) ###########
 
 ########## 1) Scenarios & params ###########
 scenario_names <- c("uni", "bi")
@@ -49,7 +71,8 @@ for(i in seq_along(bd_trees)){
     cont.traits[[i]][[j]] <- phytools::fastBM(bd_trees[[i]][[j]], 
                                               sig2 = cont_sigma, a = 0.0)  
 }
-rm(list=ls()[c(-1:-4,-7,-8)])
+rm(list = ls()[!ls() %in% c("bd_trees", "cont.traits", "scenario_names",
+                            "forward_rates", "reverse_rates", "cont_sigma")])
 # leave with cont.traits
 ######## 2) End Continuous trait simulation ##########
 
@@ -93,7 +116,9 @@ for(i in seq_along(bd_trees)){
     bd_trees_scaled[[i]][[j]] <- scaled_set
   }
 }
-rm(list=ls()[c(1, 4:6,8,9,11:19,21,23:25)])
+rm(list = ls()[!ls() %in% c("bd_trees", "cont.traits", "scenario_names",
+                            "forward_rates", "reverse_rates", "cont_sigma",
+                            "bd_trees_scaled")])
 
 ########### 3) End of Scale trees based on Cont. Trait ########
 
