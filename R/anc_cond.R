@@ -19,6 +19,10 @@
 #' @param nsim Number of stochastic maps to draw.
 #' @param iter Number of null datasets generated per stochastic map.
 #' @param message Logical; print progress messages and summaries when TRUE.
+#'   Ignored when ncores > 1.
+#' @param ncores Number of cores to use for parallel processing (default 1).
+#'   Uses parallel::parLapply (PSOCK clusters) which works on Windows, Mac,
+#'   and Linux.
 #'
 #' @return An object of class "AncCond" containing observed and null
 #'   distributions, p-values, and the mean number of transitions.
@@ -30,7 +34,8 @@ AncCond <- function(tree,
                     n.tails = 1,
                     nsim = 100,
                     iter = 100,
-                    message = FALSE) {
+                    message = FALSE,
+                    ncores = 1L) {
   checkPackages()
   InputTesting(tree, data, drop.state, mat, pi, n.tails, nsim, iter)
 
@@ -56,34 +61,48 @@ AncCond <- function(tree,
     message = message
   )
 
-  observed.anc.cond <- vector("list", nsim)
-  null.anc.cond <- vector("list", nsim)
-  meantrans <- c(`12` = 0, `21` = 0)
-
-  for (j in seq_len(nsim)) {
-    if (isTRUE(message)) {
-      cat("\014Analyzing map:", j, "of", nsim, "\n")
-    }
+  # Worker function for one stochastic map
+  process_one_map <- function(j) {
     current.map <- anc.state.dt[[j]]
-    observed.anc.cond[[j]] <- exctractAncestral(
+    obs <- exctractAncestral(
       current.map = current.map,
       anc.states.cont.trait = anc.states.cont.trait,
       count = TRUE
     )
-    meantrans <- meantrans + observed.anc.cond[[j]]$ntrans
-    observed.anc.cond[[j]]$ntrans <- NULL
+    ntrans <- obs$ntrans
+    obs$ntrans <- NULL
 
-    null.anc.cond[[j]] <- CreateNull(
+    null <- CreateNull(
       tree = tree,
       iter = iter,
       current.map = current.map,
       anc.states.cont.trait = anc.states.cont.trait,
-      message = message,
+      message = FALSE,
       j = j,
       nsim = nsim
     )
+    list(obs = obs, null = null, ntrans = ntrans)
   }
-  meantrans <- meantrans / nsim
+
+  if (ncores > 1L) {
+    cl <- parallel::makeCluster(ncores)
+    on.exit(parallel::stopCluster(cl), add = TRUE)
+    # Export needed objects and functions to workers
+    parallel::clusterExport(cl, varlist = c(
+      "anc.state.dt", "anc.states.cont.trait", "tree", "iter", "nsim",
+      "exctractAncestral", "CreateNull"
+    ), envir = environment())
+    map_results <- parallel::parLapply(cl, seq_len(nsim), process_one_map)
+  } else {
+    map_results <- lapply(seq_len(nsim), function(j) {
+      if (isTRUE(message)) cat("\014Analyzing map:", j, "of", nsim, "\n")
+      process_one_map(j)
+    })
+  }
+
+  observed.anc.cond <- lapply(map_results, `[[`, "obs")
+  null.anc.cond <- lapply(map_results, `[[`, "null")
+  meantrans <- Reduce(`+`, lapply(map_results, `[[`, "ntrans")) / nsim
 
   obs.dist <- ProcessObserved(observed.anc.cond)
   null.dist <- ProcessNull(null.anc.cond, iter)
@@ -181,8 +200,8 @@ CreateNull <- function(tree,
     zero_idx <- which(current.Q == 0, arr.ind = TRUE)
     for (k in seq_len(nrow(zero_idx))) {
       r <- zero_idx[k, 1]
-      c <- zero_idx[k, 2]
-      current.Q[r, c] <- if (r == c) -1e-25 else 1e-25
+      cc <- zero_idx[k, 2]
+      current.Q[r, cc] <- if (r == cc) -1e-25 else 1e-25
     }
     if (isTRUE(message)) {
       cat("\nSetting zero transition rates to +/- 1e-25 for simulation stability.\n")
@@ -191,51 +210,63 @@ CreateNull <- function(tree,
   root.state <- c(`1` = 0, `2` = 0)
   root.state[names(root.state) == names(current.map$maps[[1]])[1]] <- 1
 
-  nulldist <- vector("list", iter)
-  for (n in seq_len(iter)) {
-    good.sim <- FALSE
-    sim.count <- 0
-    timeout <- FALSE
+  # Cache empirical transition count outside the loop
+  current_trans <- summary(current.map)$N
+  if (current_trans > 5) {
+    lo <- 0.8 * current_trans
+    hi <- 1.2 * current_trans
+  } else {
+    lo <- current_trans - 1
+    hi <- current_trans + 1
+  }
 
-    while (!good.sim && !timeout) {
-      sim.count <- sim.count + 1
-      sim.anc.state.dt <- phytools::sim.history(
-        tree = tree,
-        Q = current.Q,
-        nsim = 1,
-        message = FALSE,
-        anc = root.state
-      )
-      current_trans <- summary(current.map)$N
-      sim_trans <- summary(sim.anc.state.dt)$N
-      if (current_trans > 5) {
-        good.sim <- sim_trans >= 0.8 * current_trans && sim_trans <= 1.2 * current_trans
-      } else {
-        good.sim <- sim_trans >= current_trans - 1 && sim_trans <= current_trans + 1
-      }
-      if (good.sim && isTRUE(message)) {
-        cat(
-          "\014Analyzing map:", j, "of", nsim, "\n",
-          "Number of transitions:\n",
-          " Empirical map:\n", current_trans,
-          "\n Null simulation:\n", sim_trans,
-          "\n"
+  nulldist <- vector("list", iter)
+  batch_size <- 50L
+  filled <- 0L
+  total_attempts <- 0L
+  max_attempts <- iter * 10000L
+
+  while (filled < iter && total_attempts < max_attempts) {
+    n_need <- min(batch_size, (iter - filled) * 20L)
+    sims <- phytools::sim.history(
+      tree = tree,
+      Q = current.Q,
+      nsim = n_need,
+      message = FALSE,
+      anc = root.state
+    )
+    if (!inherits(sims, "multiSimmap")) sims <- list(sims)
+
+    for (s in seq_along(sims)) {
+      total_attempts <- total_attempts + 1L
+      sim_trans <- summary(sims[[s]])$N
+      if (sim_trans >= lo && sim_trans <= hi) {
+        filled <- filled + 1L
+        nulldist[[filled]] <- exctractAncestral(
+          current.map = sims[[s]],
+          anc.states.cont.trait = anc.states.cont.trait,
+          count = FALSE
         )
-      }
-      if (sim.count > 10000) {
         if (isTRUE(message)) {
-          warning("Unable to simulate a null with similar behavior to the observed map.")
+          cat(
+            "\014Analyzing map:", j, "of", nsim, "\n",
+            "Number of transitions:\n",
+            " Empirical map:\n", current_trans,
+            "\n Null simulation:\n", sim_trans,
+            "\n"
+          )
         }
-        timeout <- TRUE
+        if (filled >= iter) break
       }
     }
-    if (good.sim) {
-      nulldist[[n]] <- exctractAncestral(
-        current.map = sim.anc.state.dt,
-        anc.states.cont.trait = anc.states.cont.trait,
-        count = FALSE
-      )
-    } else {
+  }
+
+  # Fill any remaining slots with NA if we timed out
+  if (filled < iter) {
+    if (isTRUE(message)) {
+      warning("Unable to simulate a null with similar behavior to the observed map.")
+    }
+    for (n in (filled + 1L):iter) {
       nulldist[[n]] <- list(`12` = NA_real_, `21` = NA_real_)
     }
   }
@@ -248,34 +279,33 @@ exctractAncestral <- function(current.map,
   me <- current.map$mapped.edge
   col1 <- if ("1" %in% colnames(me)) me[, "1", drop = TRUE] else rep(0, nrow(me))
   col2 <- if ("2" %in% colnames(me)) me[, "2", drop = TRUE] else rep(0, nrow(me))
-  ss_nodes <- (col1 > 0) & (col2 > 0)
-  
-  # define wanted_nodes before using it
-  rn <- rownames(me); if (is.null(rn)) rn <- as.character(seq_len(nrow(me)))
-  wanted_nodes <- rn[ss_nodes]
-  
-  trans.maps <- current.map$maps[ss_nodes]
-  producing.nodes12 <- character()
-  producing.nodes21 <- character()
-  
-  if (length(wanted_nodes) > 0) {
-    wanted_nodes <- gsub(",.*", "", wanted_nodes)
-    for (i in seq_along(wanted_nodes)) {
-      first_state <- names(trans.maps[[i]])[1]
-      if (first_state == "1") {
-        producing.nodes12 <- c(producing.nodes12, wanted_nodes[i])
-      } else if (first_state == "2") {
-        producing.nodes21 <- c(producing.nodes21, wanted_nodes[i])
-      }
-    }
+  ss_nodes <- which((col1 > 0) & (col2 > 0))
+
+  if (length(ss_nodes) == 0L) {
+    res <- list(`12` = numeric(0), `21` = numeric(0))
+    if (isTRUE(count)) res$ntrans <- c(`12` = 0L, `21` = 0L)
+    return(res)
   }
-  
-  producing.nodes12 <- unique(producing.nodes12)
-  producing.nodes21 <- unique(producing.nodes21)
-  
+
+  rn <- rownames(me)
+  if (is.null(rn)) rn <- as.character(seq_len(nrow(me)))
+  wanted_nodes <- gsub(",.*", "", rn[ss_nodes])
+
+  # Vectorized: get first state name for each transition edge
+  trans.maps <- current.map$maps[ss_nodes]
+  first_states <- vapply(trans.maps, function(m) names(m)[1L], character(1))
+
+  is12 <- first_states == "1"
+  is21 <- first_states == "2"
+
+  producing.nodes12 <- unique(wanted_nodes[is12])
+  producing.nodes21 <- unique(wanted_nodes[is21])
+
+  ace <- anc.states.cont.trait$ace
+  ace_names <- names(ace)
   res <- list(
-    `12` = anc.states.cont.trait$ace[names(anc.states.cont.trait$ace) %in% producing.nodes12],
-    `21` = anc.states.cont.trait$ace[names(anc.states.cont.trait$ace) %in% producing.nodes21]
+    `12` = ace[ace_names %in% producing.nodes12],
+    `21` = ace[ace_names %in% producing.nodes21]
   )
   if (isTRUE(count)) {
     res$ntrans <- c(`12` = length(producing.nodes12), `21` = length(producing.nodes21))
@@ -291,21 +321,17 @@ ProcessObserved <- function(observed.anc.cond) {
 }
 
 ProcessNull <- function(null.anc.cond, iter) {
-  vals12 <- numeric()
-  vals21 <- numeric()
-  for (j in seq_len(iter)) {
-    cur.sim12 <- numeric()
-    cur.sim21 <- numeric()
-    for (i in seq_along(null.anc.cond)) {
-      sample12 <- null.anc.cond[[i]][[j]]$`12`
-      sample21 <- null.anc.cond[[i]][[j]]$`21`
-      cur.sim12 <- c(cur.sim12, mean(sample12, na.rm = TRUE))
-      cur.sim21 <- c(cur.sim21, mean(sample21, na.rm = TRUE))
+  n_maps <- length(null.anc.cond)
+  # Pre-build matrix: rows = maps, cols = null iterations
+  mat12 <- matrix(NA_real_, nrow = n_maps, ncol = iter)
+  mat21 <- matrix(NA_real_, nrow = n_maps, ncol = iter)
+  for (i in seq_len(n_maps)) {
+    for (j in seq_len(iter)) {
+      mat12[i, j] <- mean(null.anc.cond[[i]][[j]]$`12`, na.rm = TRUE)
+      mat21[i, j] <- mean(null.anc.cond[[i]][[j]]$`21`, na.rm = TRUE)
     }
-    vals12 <- c(vals12, mean(cur.sim12, na.rm = TRUE))
-    vals21 <- c(vals21, mean(cur.sim21, na.rm = TRUE))
   }
-  list(`12` = vals12, `21` = vals21)
+  list(`12` = colMeans(mat12, na.rm = TRUE), `21` = colMeans(mat21, na.rm = TRUE))
 }
 
 CalcPVal <- function(results, n.tails) {
