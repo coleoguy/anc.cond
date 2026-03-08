@@ -87,7 +87,6 @@ AncCond <- function(tree,
   if (ncores > 1L) {
     cl <- parallel::makeCluster(ncores)
     on.exit(parallel::stopCluster(cl), add = TRUE)
-    # Export needed objects and functions to workers
     parallel::clusterExport(cl, varlist = c(
       "anc.state.dt", "anc.states.cont.trait", "tree", "iter", "nsim",
       "exctractAncestral", "CreateNull", ".count_transitions_fast"
@@ -286,27 +285,20 @@ exctractAncestral <- function(current.map,
   me <- current.map$mapped.edge
   col1 <- if ("1" %in% colnames(me)) me[, "1", drop = TRUE] else rep(0, nrow(me))
   col2 <- if ("2" %in% colnames(me)) me[, "2", drop = TRUE] else rep(0, nrow(me))
-  ss_nodes <- which((col1 > 0) & (col2 > 0))
-
-  if (length(ss_nodes) == 0L) {
-    res <- list(`12` = numeric(0), `21` = numeric(0))
-    if (isTRUE(count)) res$ntrans <- c(`12` = 0L, `21` = 0L)
-    return(res)
-  }
-
-  rn <- rownames(me)
-  if (is.null(rn)) rn <- as.character(seq_len(nrow(me)))
-  wanted_nodes <- gsub(",.*", "", rn[ss_nodes])
+  ss_nodes <- (col1 > 0) & (col2 > 0)
+  
+  # define wanted_nodes before using it
+  rn <- rownames(me); if (is.null(rn)) rn <- as.character(seq_len(nrow(me)))
+  wanted_nodes <- rn[ss_nodes]
+  
+  trans.maps <- current.map$maps[ss_nodes]
+  wanted_nodes <- gsub(",.*", "", wanted_nodes)
 
   # Vectorized: get first state name for each transition edge
-  trans.maps <- current.map$maps[ss_nodes]
   first_states <- vapply(trans.maps, function(m) names(m)[1L], character(1))
 
-  is12 <- first_states == "1"
-  is21 <- first_states == "2"
-
-  producing.nodes12 <- unique(wanted_nodes[is12])
-  producing.nodes21 <- unique(wanted_nodes[is21])
+  producing.nodes12 <- unique(wanted_nodes[first_states == "1"])
+  producing.nodes21 <- unique(wanted_nodes[first_states == "2"])
 
   ace <- anc.states.cont.trait$ace
   ace_names <- names(ace)
