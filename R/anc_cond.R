@@ -90,7 +90,7 @@ AncCond <- function(tree,
     # Export needed objects and functions to workers
     parallel::clusterExport(cl, varlist = c(
       "anc.state.dt", "anc.states.cont.trait", "tree", "iter", "nsim",
-      "exctractAncestral", "CreateNull"
+      "exctractAncestral", "CreateNull", ".count_transitions_fast"
     ), envir = environment())
     map_results <- parallel::parLapply(cl, seq_len(nsim), process_one_map)
   } else {
@@ -115,6 +115,13 @@ AncCond <- function(tree,
 
   if (isTRUE(message)) summary(results)
   results
+}
+
+# Fast transition counter -- avoids calling summary.simmap which is very slow.
+# Counts total number of state changes across all edges by checking how many
+# segments each edge has (transitions = segments - 1).
+.count_transitions_fast <- function(simmap_obj) {
+  sum(vapply(simmap_obj$maps, function(m) length(m) - 1L, integer(1)))
 }
 
 # Helper to ensure required packages are installed.
@@ -211,7 +218,7 @@ CreateNull <- function(tree,
   root.state[names(root.state) == names(current.map$maps[[1]])[1]] <- 1
 
   # Cache empirical transition count outside the loop
-  current_trans <- summary(current.map)$N
+  current_trans <- .count_transitions_fast(current.map)
   if (current_trans > 5) {
     lo <- 0.8 * current_trans
     hi <- 1.2 * current_trans
@@ -239,7 +246,7 @@ CreateNull <- function(tree,
 
     for (s in seq_along(sims)) {
       total_attempts <- total_attempts + 1L
-      sim_trans <- summary(sims[[s]])$N
+      sim_trans <- .count_transitions_fast(sims[[s]])
       if (sim_trans >= lo && sim_trans <= hi) {
         filled <- filled + 1L
         nulldist[[filled]] <- exctractAncestral(
@@ -322,16 +329,14 @@ ProcessObserved <- function(observed.anc.cond) {
 
 ProcessNull <- function(null.anc.cond, iter) {
   n_maps <- length(null.anc.cond)
-  # Pre-build matrix: rows = maps, cols = null iterations
-  mat12 <- matrix(NA_real_, nrow = n_maps, ncol = iter)
-  mat21 <- matrix(NA_real_, nrow = n_maps, ncol = iter)
-  for (i in seq_len(n_maps)) {
-    for (j in seq_len(iter)) {
-      mat12[i, j] <- mean(null.anc.cond[[i]][[j]]$`12`, na.rm = TRUE)
-      mat21[i, j] <- mean(null.anc.cond[[i]][[j]]$`21`, na.rm = TRUE)
-    }
-  }
-  list(`12` = colMeans(mat12, na.rm = TRUE), `21` = colMeans(mat21, na.rm = TRUE))
+  # Vectorized: build matrices using vapply instead of nested for-loops
+  mat12 <- vapply(null.anc.cond, function(map_nulls) {
+    vapply(map_nulls, function(x) mean(x$`12`, na.rm = TRUE), numeric(1))
+  }, numeric(iter))  # each column = one map
+  mat21 <- vapply(null.anc.cond, function(map_nulls) {
+    vapply(map_nulls, function(x) mean(x$`21`, na.rm = TRUE), numeric(1))
+  }, numeric(iter))
+  list(`12` = rowMeans(mat12, na.rm = TRUE), `21` = rowMeans(mat21, na.rm = TRUE))
 }
 
 CalcPVal <- function(results, n.tails) {
