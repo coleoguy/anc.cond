@@ -1,5 +1,5 @@
 # ------------------------------------------------------------
-# Run AncCond on selected scaling factors using sim_data,RData
+# Run AncCond on selected scaling factors using sim_data.RData
 # ------------------------------------------------------------
 
 # Packages
@@ -40,7 +40,7 @@ result.list <- replicate(
   ),
   simplify = FALSE
 )
-load("../data/sim_data_UL.RData")  # loads 'sim_data'
+load("../data/sim_data.RData")  # loads 'sim_data'
 names(result.list) <- names(sim_data)
 names(sim_data[[1]])
 for(i in 1:2){
@@ -66,7 +66,7 @@ for(scen in seq_along(sim_data)){
                                   library(ape)
                                   library(phytools)
                                   source("AncCond.R", keep.source = TRUE)
-                                  load("../data/sim_data_UL.RData")  # loads 'sim_data'
+                                  load("../data/sim_data.RData")  # loads 'sim_data'
                                   temp.res <- list()
                                     cur_dat <- sim_data[[scen]][[si]][[reps]]           # traits per original tree
                                     for(sf.strength in seq_along(sim_data[[scen]][[si]][[reps]]$disc_by_sf)){
@@ -98,7 +98,7 @@ for(scen in seq_along(sim_data)){
 
   sim.results <- result.list
   save(result.list,
-       file = ("../results/sim.results_UL.RData"))
+       file = ("../results/sim.results.RData"))
   
   
   
