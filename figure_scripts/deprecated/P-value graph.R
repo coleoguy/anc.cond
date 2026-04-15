@@ -1,7 +1,7 @@
 #############################
 ## Shared setup + helpers  ##
 #############################
-load("~/GitHub/anc.cond/results/sim.results_UL.RData")
+load("~/GitHub/anc.cond/results/sim.results.RData")
 
 alpha_uni <- 0.05
 alpha_bi  <- 0.025
