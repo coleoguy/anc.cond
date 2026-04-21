@@ -146,18 +146,42 @@ stopCluster(cl)
 # ── 5. Base R Summarization & File Output ──────────────────────────────────
 raw_df <- do.call(rbind, all.raw)
 
-# Calculate rejection rates grouped by conditions using aggregate()
-summary_df <- aggregate(
-  cbind(p.ac01, p.ac10, p.plg, p.pgls) ~ n.tips + q01 + q10 + s, 
-  data = raw_df, 
-  FUN = function(x) mean(x < alpha_level, na.rm = TRUE),
+# 1. Reshape raw_df to 'Long' format so we can summarize all methods at once
+# This puts p.ac01, p.ac10, etc., into a single 'p_value' column
+raw_long <- reshape(
+  raw_df,
+  varying = c("p.ac01", "p.ac10", "p.plg", "p.pgls"),
+  v.names = "p_value",
+  timevar = "method",
+  times = c("anccond.01", "anccond.10", "phyloglm", "pgls"),
+  direction = "long"
+)
+
+# 2. Calculate statistics using aggregate()
+# We calculate the Mean (rate), Sum of significant (n.sig), and Count (n.valid)
+summary_stats <- aggregate(
+  p_value ~ n.tips + q01 + q10 + s + method, 
+  data = raw_long, 
+  FUN = function(x) {
+    c(rate    = mean(x < alpha_level, na.rm = TRUE),
+      n.sig   = sum(x < alpha_level, na.rm = TRUE),
+      n.valid = sum(!is.na(x)))
+  },
   na.action = na.pass
 )
 
-# Rename columns to match your preferred format
-colnames(summary_df) <- c("n.tips", "q01", "q10", "s", "anccond.01", "anccond.10", "phyloglm", "pgls")
+# 3. Clean up the aggregate output
+# aggregate() with multiple functions creates a matrix column; we need to flatten it
+summary_df <- data.frame(
+  summary_stats[, 1:5], 
+  summary_stats$p_value
+)
 
+# 4. Add the 'metric' label for consistency with your previous results
+summary_df$metric <- ifelse(summary_df$s == 1, "FPR", "power")
+
+# 5. Save files
 write.csv(raw_df, "01_sim_asymm_power_raw.csv", row.names = FALSE)
 write.csv(summary_df, "01_sim_asymm_power_results.csv", row.names = FALSE)
 
-cat("\nSimulation Complete. Files saved as 01_sim_asymm_power_*.csv\n")
+cat("\nSimulation Complete. Files saved with n.sig and n.valid columns.\n")
