@@ -4,23 +4,23 @@ library(dplyr)
 # 1. Load the results
 df <- read.csv("01_sim_power_results.csv")
 
-# 2. Preparation: Clean up method names and ensure consistent factor levels
+# 2. Preparation: Clean up names and REMOVE PGLS
 df_plot <- df %>%
   mutate(method = case_when(
     method == "anccond.01" ~ "AncCond (0->1)",
     method == "anccond.10" ~ "AncCond (1->0)",
     method == "phyloglm"   ~ "phyloglm",
-    method == "pgls"       ~ "PGLS",
     TRUE ~ method
   )) %>%
+  # Filter to keep only the three methods you want
+  filter(method %in% c("AncCond (0->1)", "AncCond (1->0)", "phyloglm")) %>%
   filter(!is.na(rate))
 
-# Factorizing ensures the colors are assigned to the correct methods every time
+# Factorizing to ensure the order in the legend matches your preference
 df_plot$method <- factor(df_plot$method, levels = c(
   "AncCond (0->1)", 
   "AncCond (1->0)", 
-  "phyloglm", 
-  "PGLS"
+  "phyloglm"
 ))
 
 # 3. Labeling for the facets
@@ -36,26 +36,24 @@ p <- ggplot(df_plot, aes(x = s, y = rate, color = method, group = method)) +
   geom_line(linewidth = 0.8) +
   geom_point(size = 2.5) +
   
-  # THE GRID: Rows = Transition Rate (q), Columns = Taxa Size (n)
+  # THE GRID
   facet_grid(q.rate ~ n.tips, 
              labeller = labeller(q.rate = as_labeller(q_labs), 
                                  n.tips = as_labeller(n_labs))) +
   
-  # CALL DEFAULT COLORS MANUALLY
-  # These are the exact hex codes ggplot2 uses for a 4-color palette
+  # MATCHING FPR COLORS: Using specific Viridis Hex Codes
   scale_color_manual(values = c(
-    "AncCond (0->1)" = "#F8766D", # Default Red
-    "AncCond (1->0)" = "#7CAE00", # Default Green
-    "phyloglm"       = "#00BFC4", # Default Cyan/Blue
-    "PGLS"           = "#C77CFF"  # Default Purple
+    "AncCond (0->1)" = "#440154FF", # Deep Purple
+    "AncCond (1->0)" = "#21908CFF", # Teal
+    "phyloglm"       = "#FDE725FF"  # Bright Yellow
   )) +
   
   # Visual refinements
   scale_y_continuous(limits = c(0, 1.05), breaks = seq(0, 1, 0.25)) +
   scale_x_continuous(breaks = unique(df_plot$s)) +
   labs(
-    title = "Method Performance: Directional Rejection Rates",
-    subtitle = "Y-axis: n.sig / n.valid | Rows: Transition Rate (q) | Cols: Taxa Size (n)",
+    title = "Method Performance: Power Comparison",
+    subtitle = "Matched colors to FPR Plot (Purple/Teal = AncCond, Yellow = phyloglm)",
     x = "Signal Strength (s)",
     y = "Rate (n.sig / n.valid)",
     color = "Method"
@@ -70,4 +68,4 @@ p <- ggplot(df_plot, aes(x = s, y = rate, color = method, group = method)) +
 
 # 5. Display and Save
 print(p)
-ggsave("anccond_dots_grid_default_colors.png", p, width = 12, height = 10, dpi = 300)
+ggsave("anccond_power.png", p, width = 12, height = 10, dpi = 300)

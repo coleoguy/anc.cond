@@ -2,85 +2,78 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 
-# 1. Load results
-df_sym  <- read.csv("01_sim_power_results.csv")
-df_asym <- read.csv("01_sim_asymm_power_results.csv")
-
-# 2. Process Symmetrical AncCond Data
-df_sym_plot <- df_sym %>%
-  filter(method %in% c("anccond.01", "anccond.10")) %>%
+# 1. Prepare the data (calculating mean and min/max across taxa)
+df_fpr_final <- df_asym %>%
+  filter(s == 1, q10 == 0.1) %>%
+  select(n.tips, q01, anccond.01, anccond.10, phyloglm) %>%
+  pivot_longer(cols = c(anccond.01, anccond.10, phyloglm), 
+               names_to = "method", 
+               values_to = "fpr") %>%
   mutate(
     method_label = case_when(
-      method == "anccond.01" ~ "AncCond (0->1) Sym",
-      method == "anccond.10" ~ "AncCond (1->0) Sym"
+      method == "anccond.01" ~ "AncCond (0 -> 1)",
+      method == "anccond.10" ~ "AncCond (1 -> 0)",
+      method == "phyloglm"   ~ "phyloglm"
+    ),
+    # Ensure 1.0 and 2.0 stay formatted correctly
+    symmetry_status = case_when(
+      q01 == 0.1 ~ "Symmetrical (0.1/0.1)",
+      TRUE ~ paste0("Asym (", sprintf("%.1f", q01), "/0.1)")
     )
   ) %>%
-  select(n.tips, q.rate, s, method = method_label, rate)
+  # Group by method and symmetry to find the taxa-driven range
+  group_by(method_label, symmetry_status) %>%
+  summarize(
+    mean_fpr = mean(fpr, na.rm = TRUE),
+    min_fpr  = min(fpr, na.rm = TRUE),
+    max_fpr  = max(fpr, na.rm = TRUE),
+    .groups = "drop"
+  )
 
-# 3. Process Asymmetrical AncCond Data (Rare loss direction only)
-df_asym_plot <- df_asym %>%
-  filter(q10 == 0.1) %>% 
-  mutate(
-    q.rate = q01, 
-    method = "AncCond (1->0) Asym (q10=0.1)",
-    rate = anccond.10 
-  ) %>%
-  select(n.tips, q.rate, s, method, rate)
+# Set factor levels for X-axis
+df_fpr_final$symmetry_status <- factor(df_fpr_final$symmetry_status, 
+                                       levels = c("Symmetrical (0.1/0.1)", 
+                                                  "Asym (0.5/0.1)", 
+                                                  "Asym (1.0/0.1)", 
+                                                  "Asym (2.0/0.1)"))
 
-# 4. Combine and define factor levels for consistent legend ordering
-df_final <- rbind(df_sym_plot, df_asym_plot) %>%
-  filter(!is.na(rate))
+# 2. Create the Figure
+# We use 'position_dodge' so the lines/bars for different methods don't sit on top of each other
+pd <- position_dodge(width = 0.3)
 
-df_final$method <- factor(df_final$method, levels = c(
-  "AncCond (0->1) Sym",
-  "AncCond (1->0) Sym",
-  "AncCond (1->0) Asym (q10=0.1)"
-))
-
-# 5. Facet labels
-n_labs <- setNames(paste0("n = ", unique(df_final$n.tips)), unique(df_final$n.tips))
-q_labs <- setNames(paste0("q(forward) = ", unique(df_final$q.rate)), unique(df_final$q.rate))
-
-# 6. Create the Plot
-p <- ggplot(df_final, aes(x = s, y = rate, color = method, group = method)) +
+p_fpr_bars <- ggplot(df_fpr_final, aes(x = symmetry_status, y = mean_fpr, 
+                                       color = method_label, group = method_label)) +
   # Alpha = 0.05 baseline
-  geom_hline(yintercept = 0.05, linetype = "dotted", color = "black", alpha = 0.6) +
+  geom_hline(yintercept = 0.05, linetype = "dashed", color = "gray40", linewidth = 0.8) +
   
-  # Lines and Points
-  # 'linetype = "solid"' is default, but we'll ensure all are solid here
-  geom_line(linewidth = 0.9, linetype = "solid") +
-  geom_point(size = 2.5) +
+  # THE BARS: Error bars showing the range across taxa (50 to 500)
+  geom_errorbar(aes(ymin = min_fpr, ymax = max_fpr), 
+                width = 0.2, position = pd, linewidth = 0.8) +
   
-  # THE GRID: Rows = Transition Rate (q), Columns = Taxa Size (n)
-  facet_grid(q.rate ~ n.tips, 
-             labeller = labeller(q.rate = as_labeller(q_labs), 
-                                 n.tips = as_labeller(n_labs))) +
+  # THE LINES: Connecting the means
+  geom_line(position = pd, linewidth = 1) +
   
-  # CUSTOM COLOR MAPPING
-  # Using ggplot2 default hex codes for red/green and a standard blue for the asym line
-  scale_color_manual(values = c(
-    "AncCond (0->1) Sym"            = "#F8766D", # Default ggplot Red
-    "AncCond (1->0) Sym"            = "#7CAE00", # Default ggplot Green
-    "AncCond (1->0) Asym (q10=0.1)" = "#619CFF"  # Standard ggplot Blue
-  )) +
+  # THE POINTS: Mean values
+  geom_point(position = pd, size = 3) +
   
-  scale_y_continuous(limits = c(0, 1.05), breaks = seq(0, 1, 0.25)) +
-  scale_x_continuous(breaks = unique(df_final$s)) +
+  # Aesthetics
+  scale_color_viridis_d(name = "Method / Direction", option = "viridis") +
+  scale_y_continuous(limits = c(0, 0.25), breaks = seq(0, 0.25, 0.05)) +
+  
   labs(
-    title = "AncCond Power: Symmetrical vs. Asymmetrical Evolution",
-    subtitle = "Red/Green = Symmetrical (Mk) | Blue = Asymmetrical (Source-Sink: q10=0.1)",
-    x = "Signal Strength (s)",
-    y = "Rate (n.sig / n.valid)",
-    color = "Model & Direction"
+    title = "False Positive Rate: Impact of Asymmetry",
+    subtitle = "Bars represent the range of FPR across tip sizes (50-500)",
+    x = "Transition Rate Symmetry (q01 / q10)",
+    y = "False Positive Rate (FPR)"
   ) +
-  theme_bw() + 
+  
+  theme_bw() +
   theme(
-    strip.background = element_rect(fill = "gray95"),
-    strip.text = element_text(face = "bold"),
     panel.grid.minor = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1),
     legend.position = "bottom"
   )
 
-# 7. Finalize
-print(p)
-ggsave("anccond_asym_blue_comparison.png", p, width = 12, height = 10, dpi = 300)
+# 3. Save and Display
+print(p_fpr_bars)
+ggsave("fpr_adversarial_errorbars.png", p_fpr_bars, width = 10, height = 7, dpi = 300)
