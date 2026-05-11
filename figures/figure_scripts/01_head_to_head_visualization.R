@@ -25,35 +25,44 @@ p <- ggplot(df_h2h, aes(x = phyloglm_power, y = AncCond_power)) +
   geom_point(aes(size = n.tips, 
                  color = as.factor(s), 
                  shape = as.factor(q.rate)), 
-             alpha = 0.7) +
+             alpha = 0.75) + # Slightly higher alpha for visibility
   
-  # UPDATED: Numerical Corner Annotations
-  # Top-left: Set to 0 and 1. Adjust 'hjust' and 'vjust' to nudge the text.
-  annotate("text", x = 0, y = 1, label = "AncCond better", 
+  # Numerical Corner Annotations
+  annotate("text", x = 0, y = 1, label = "AncCond Better", 
            fontface = "italic", color = "gray40", 
-           hjust = -0.1,  # Negative nudges it right
-           vjust = 0.4) + # Above 1 nudges it down
+           hjust = -0.1, vjust = 0.4) + 
   
-  # Bottom-right: Set to 1 and 0. 
-  annotate("text", x = 1, y = 0, label = "phyloglm better", 
+  annotate("text", x = 1, y = 0, label = "Phyloglm Better", 
            fontface = "italic", color = "gray40", 
-           hjust = 1.1,   # Above 1 nudges it left
-           vjust = 0.3) + # Negative nudges it up
+           hjust = 1.1, vjust = 0.3) + 
   
-  # Aesthetics
-  scale_color_viridis_d(name = "Signal Strength (s)") +
-  scale_shape_manual(values = c(18, 17, 15, 16), name = "Trans. Rate (q)") +
-  scale_size_continuous(range = c(3, 10), 
-                        breaks = c(100, 200, 300, 400, 500), 
+  # MATCHING THE THEME: Using the same palette logic (Purple -> Teal -> Dark Gold)
+  # Adjust the number of colors in 'values' if you have more/fewer signal strengths (s)
+  scale_color_manual(
+    name = "Signal Strength (s)",
+    values = c(
+      "2" = "#440154FF", # Deep Purple
+      "3" = "#31688EFF", # Steel Blue
+      "5" = "#40917A", # Teal
+      "10" = "#D4A017"    # Dark Gold (The color we just set for phyloglm)
+    ),
+    guide = guide_legend(override.aes = list(size = 4))
+  ) +
+  
+  scale_shape_manual(values = c(18, 17, 15, 16), 
+                     name = "Trans. Rate (q)", 
+                     guide = guide_legend(override.aes = list(size = 4))) +
+  
+  scale_size_continuous(range = c(4, 11), 
+                        breaks = c(50, 100, 200, 500), 
                         name = "Tree Size (n)") +
   
-  # Fixed 1:1 Aspect Ratio
   coord_fixed(xlim = c(0, 1), ylim = c(0, 1)) +
   
   labs(
     title = "Head-to-Head Power Comparison",
-    x = "phyloglm power",
-    y = "AncCond power"
+    x = "Phyloglm Power",
+    y = "AncCond Power"
   ) +
   
   theme_bw() +
@@ -61,9 +70,14 @@ p <- ggplot(df_h2h, aes(x = phyloglm_power, y = AncCond_power)) +
     panel.grid.minor = element_blank(),
     legend.box = "vertical",
     legend.position = "right",
-    legend.title = element_text(face = "bold")
+    
+    # ENHANCED LEGEND
+    legend.title = element_text(face = "bold", size = 12),
+    legend.text = element_text(size = 10),
+    legend.spacing.y = unit(0.2, "cm")
   )
+
 
 # 4. Display and Save
 print(p)
-ggsave("h2h_power.png", p, width = 10, height = 7, dpi = 300)
+ggsave("h2h_power_matched.png", p, width = 10, height = 8, dpi = 300)
