@@ -25,44 +25,51 @@ p <- ggplot(df_h2h, aes(x = phyloglm_power, y = AncCond_power)) +
   geom_point(aes(size = n.tips, 
                  color = as.factor(s), 
                  shape = as.factor(q.rate)), 
-             alpha = 0.75) + # Slightly higher alpha for visibility
+             alpha = 0.75) + 
   
   # Numerical Corner Annotations
-  annotate("text", x = 0, y = 1, label = "AncCond Better", 
+  annotate("text", x = 0, y = 1, label = "AncCond better", 
            fontface = "italic", color = "gray40", 
            hjust = -0.1, vjust = 0.4) + 
   
-  annotate("text", x = 1, y = 0, label = "Phyloglm Better", 
+  annotate("text", x = 1, y = 0, label = "phyloglm better", 
            fontface = "italic", color = "gray40", 
            hjust = 1.1, vjust = 0.3) + 
   
-  # MATCHING THE THEME: Using the same palette logic (Purple -> Teal -> Dark Gold)
-  # Adjust the number of colors in 'values' if you have more/fewer signal strengths (s)
+  # 1. COLOR & SIGNAL STRENGTH: Force larger legend icons here
   scale_color_manual(
     name = "Signal Strength (s)",
     values = c(
-      "2" = "#440154FF", # Deep Purple
-      "3" = "#31688EFF", # Steel Blue
-      "5" = "#40917A", # Teal
-      "10" = "#D4A017"    # Dark Gold (The color we just set for phyloglm)
+      "2" = "#440154FF",  # Deep Purple
+      "3" = "#31688EFF",  # Steel Blue
+      "5" = "#40917A",    # Teal
+      "10" = "#D4A017"    # Dark Gold 
     ),
-    guide = guide_legend(override.aes = list(size = 4))
+    guide = guide_legend(override.aes = list(size = 8)) 
   ) +
   
-  scale_shape_manual(values = c(18, 17, 15, 16), 
-                     name = "Trans. Rate (q)", 
-                     guide = guide_legend(override.aes = list(size = 4))) +
+  # 2. SHAPE & TRANSITION RATE: Force much larger shapes here
+  scale_shape_manual(
+    values = c(18, 17, 15, 16), 
+    name = "Trans. Rate (q)",
+    guide = guide_legend(override.aes = list(size = 8))
+  ) +
   
-  scale_size_continuous(range = c(4, 11), 
-                        breaks = c(50, 100, 200, 500), 
-                        name = "Tree Size (n)") +
+  # 3. SIZE & TREE SIZE: Force these to stay small in the legend
+  # Note: The override size vector (1.5 to 5) must match the length of the breaks (4)
+  scale_size_continuous(
+    range = c(4, 11), 
+    breaks = c(50, 100, 200, 500), 
+    name = "Tree Size (n)"
+  ) +
   
+  # Fixed 1:1 Aspect Ratio
   coord_fixed(xlim = c(0, 1), ylim = c(0, 1)) +
   
   labs(
     title = "Head-to-Head Power Comparison",
-    x = "Phyloglm Power",
-    y = "AncCond Power"
+    x = "Phyloglm power",
+    y = "AncCond power",
   ) +
   
   theme_bw() +
@@ -70,14 +77,14 @@ p <- ggplot(df_h2h, aes(x = phyloglm_power, y = AncCond_power)) +
     panel.grid.minor = element_blank(),
     legend.box = "vertical",
     legend.position = "right",
-    
-    # ENHANCED LEGEND
     legend.title = element_text(face = "bold", size = 12),
-    legend.text = element_text(size = 10),
-    legend.spacing.y = unit(0.2, "cm")
-  )
-
+    legend.text = element_text(size = 11),
+    # INCREASE KEY HEIGHT: This gives the now-massive shape icons room to breathe without overlapping
+    legend.key.height = unit(1, "cm"), 
+    axis.title = element_text(size = 14, face = "bold"),
+    axis.text = element_text(size = 12)
+)
 
 # 4. Display and Save
 print(p)
-ggsave("h2h_power_matched.png", p, width = 10, height = 8, dpi = 300)
+ggsave("h2h_power_final.png", p, width = 13.34, height = 10.44, dpi = 300)

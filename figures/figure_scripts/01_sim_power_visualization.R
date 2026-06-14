@@ -69,4 +69,4 @@ p <- ggplot(df_plot, aes(x = s, y = rate, color = method, group = method)) +
   )
 
 print(p)
-ggsave("anccond_power_filtered.png", p, width = 12, height = 10, dpi = 300)
+ggsave("anccond_power_filtered.png", p, width = 11.35, height = 9, dpi = 300)

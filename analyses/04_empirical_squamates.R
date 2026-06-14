@@ -235,6 +235,9 @@ if (length(valid.01) > 10) {
   mtext("A", side = 3, adj = -0.1, line = 0.8, font = 2, cex = 1.3)
 }
 
+# yaxt = "n"
+# axis(side = 2, at = c(), label = "4.6")
+
 # Panel B: 1→0 transitions
 valid.10 <- null.10.tree1[is.finite(null.10.tree1)]
 if (length(valid.10) > 10) {
