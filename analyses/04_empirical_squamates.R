@@ -21,7 +21,7 @@ library(phytools)
 library(parallel)
 
 # ── Detect cores ────────────────────────────────────────────────────────────
-n.cores <- 13
+n.cores <- 28
 cat("Using", n.cores, "cores\n")
 
 # Initialize the cluster
@@ -70,7 +70,7 @@ cat("  State 0 (oviparous):", sum(y == 0), "\n")
 cat("  State 1 (viviparous):", sum(y == 1), "\n")
 
 # ── Quick sanity check: run tree 1 serially first ──
-n.maps <- 50
+n.maps <- 100
 n.sims <- 500
 
 cat("\n── SANITY CHECK: Tree 1 (serial) ──\n")
@@ -220,31 +220,46 @@ cat("Trees with p.combined < 0.05:", sum(results$p.combined < 0.05, na.rm=TRUE),
 write.csv(results, out.csv, row.names = FALSE)
 cat("Results saved to:", out.csv, "\n")
 
-# ── 8. Figure 6: null distribution + observed value ──
-pdf(out.fig, width = 7, height = 4)
-par(mfrow = c(1, 2), mar = c(4.5, 4.5, 2.5, 1), cex.lab = 1.2, cex.axis = 1)
+# ── 8. Save and Visualize (Y-Axis Headroom Adjustment) ─────────────────────
+pdf(out.fig, width = 8, height = 5)
+par(mfrow = c(1, 2), mar = c(5, 5, 3, 2))
 
-# Panel A: 0→1 transitions
+# ── Panel A: 0 → 1 Transitions ──────────────────────────────────────────────
 valid.01 <- null.01.tree1[is.finite(null.01.tree1)]
 if (length(valid.01) > 10) {
+  # 1. Pre-calculate histogram to capture real counts and maximum height
+  h01 <- hist(valid.01, breaks = 30, plot = FALSE)
+  
+  # 2. Calculate y-axis limits with 15% headroom to clear titles/labels
+  y_lims_01 <- c(0, max(h01$counts) * 1.15)
+  
+  # 3. Plot letting R auto-scale x, but explicitly setting y
   hist(valid.01, breaks = 30, col = "grey80", border = "grey50",
        main = expression("Gains of viviparity (0" %->% "1)"),
        xlab = "Ancestral log(SVL mm)", ylab = "Frequency",
-       xlim = range(c(valid.01, obs.01.tree1), na.rm = TRUE))
+       ylim = y_lims_01,
+       yaxs = "r") # Adds standard padding to the y-axis
+  
   abline(v = obs.01.tree1, col = "firebrick", lwd = 2.5, lty = 1)
   mtext("A", side = 3, adj = -0.1, line = 0.8, font = 2, cex = 1.3)
 }
 
-# yaxt = "n"
-# axis(side = 2, at = c(), label = "4.6")
-
-# Panel B: 1→0 transitions
+# ── Panel B: 1 → 0 Transitions ──────────────────────────────────────────────
 valid.10 <- null.10.tree1[is.finite(null.10.tree1)]
 if (length(valid.10) > 10) {
+  # 1. Pre-calculate histogram
+  h10 <- hist(valid.10, breaks = 30, plot = FALSE)
+  
+  # 2. Calculate y-axis limits with 15% headroom
+  y_lims_10 <- c(0, max(h10$counts) * 1.15)
+  
+  # 3. Plot
   hist(valid.10, breaks = 30, col = "grey80", border = "grey50",
        main = expression("Losses of viviparity (1" %->% "0)"),
        xlab = "Ancestral log(SVL mm)", ylab = "Frequency",
-       xlim = range(c(valid.10, obs.10.tree1), na.rm = TRUE))
+       ylim = y_lims_10,
+       yaxs = "r")
+  
   abline(v = obs.10.tree1, col = "steelblue", lwd = 2.5, lty = 1)
   mtext("B", side = 3, adj = -0.1, line = 0.8, font = 2, cex = 1.3)
 }
