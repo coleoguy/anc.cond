@@ -34,7 +34,8 @@ p <- ggplot(plot_data, aes(x = delta.theta, y = FP_Rate, color = Method, group =
   # Facet by alpha to see how pull strength changes the behavior
   facet_wrap(~ alpha_label) +
   # Aesthetics and Labels
-  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  # Lowers the ceiling to 0.3 (or 0.4) to tightly frame your data
+  scale_y_continuous(limits = c(0, 0.3), breaks = seq(0, 0.3, 0.1)) +
   scale_color_manual(values = c("Standard" = "#0072B2", "Pruned" = "#D55E00")) +
   labs(
     title = "AncCond False Positive Rates: OU Adversarial Scenario",

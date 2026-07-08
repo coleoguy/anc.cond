@@ -58,15 +58,17 @@ p <- ggplot(df_plot, aes(x = s, y = rate, color = method, group = method)) +
   theme_bw() + 
   theme(
     strip.background = element_rect(fill = "gray95"),
-    strip.text = element_text(face = "bold", size = 10),
+    strip.text = element_text(face = "bold", size = 18),
     panel.grid.minor = element_blank(),
+    axis.title = element_text(size = 18),
+    axis.text = element_text(size = 16),
     
     # BIGGER LEGEND
     legend.position = "bottom",
-    legend.title = element_text(size = 12, face = "bold"),
-    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 14, face = "bold"),
+    legend.text = element_text(size = 16),
     legend.key.width = unit(1.5, "cm") # Makes the legend lines longer/easier to see
   )
 
 print(p)
-ggsave("anccond_power_filtered.png", p, width = 11.35, height = 9, dpi = 300)
+#ggsave("anccond_power_filtered.png", p, width = 11.35, height = 9, dpi = 300)

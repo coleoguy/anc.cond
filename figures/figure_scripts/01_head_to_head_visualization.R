@@ -77,12 +77,13 @@ p <- ggplot(df_h2h, aes(x = phyloglm_power, y = AncCond_power)) +
     panel.grid.minor = element_blank(),
     legend.box = "vertical",
     legend.position = "right",
-    legend.title = element_text(face = "bold", size = 12),
-    legend.text = element_text(size = 11),
+    legend.title = element_text(face = "bold", size = 18),
+    legend.text = element_text(size = 16),
     # INCREASE KEY HEIGHT: This gives the now-massive shape icons room to breathe without overlapping
     legend.key.height = unit(1, "cm"), 
-    axis.title = element_text(size = 14, face = "bold"),
-    axis.text = element_text(size = 12)
+    axis.title = element_text(size = 18, face = "bold"),
+    axis.text = element_text(size = 16),
+    plot.title = element_text(size = 18)
 )
 
 # 4. Display and Save
