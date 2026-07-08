@@ -1,32 +1,36 @@
 library(ggplot2)
 library(dplyr)
 
-# 1. Load Symmetrical Results (includes AncCond 1->0 and phyloglm)
+# 1. Load Symmetrical Results (Extract BOTH AncCond 1->0 and phyloglm)
 df_sym <- read.csv("01_sim_power_results.csv") %>%
   filter(n.tips == 500, q.rate %in% c(0.5, 1.0, 2.0)) %>%
   rename(q_val = q.rate) %>%
   filter(method %in% c("anccond.10", "phyloglm")) %>%
   mutate(line_group = case_when(
-    method == "anccond.10" ~ "AncCond 1->0 (Symmetrical)",
-    method == "phyloglm"   ~ "Phyloglm"
+    method == "anccond.10" ~ "AncCond q10 = q01",
+    method == "phyloglm"   ~ "Phyloglm q10 = q01"
   ))
 
-# 2. Load Asymmetrical Results (AncCond 1->0)
+# 2. Load Asymmetrical Results (Extract BOTH AncCond 1->0 and phyloglm)
 df_asym <- read.csv("01_sim_asymm_power_results.csv") %>%
   filter(n.tips == 500, q01 %in% c(0.5, 1.0, 2.0)) %>%
   rename(q_val = q01) %>%
-  filter(method == "anccond.10") %>%
-  mutate(line_group = "AncCond 1->0 (Asymmetrical)")
+  filter(method %in% c("anccond.10", "phyloglm")) %>%
+  mutate(line_group = case_when(
+    method == "anccond.10" ~ "AncCond q10 = 0.1",
+    method == "phyloglm"   ~ "Phyloglm q10 = 0.1"
+  ))
 
 # 3. Combine and Clean
 df_final <- bind_rows(df_sym, df_asym) %>%
   mutate(
     q_label = paste0("q01 = ", sprintf("%.1f", q_val)),
-    # Ensure factor levels match the color manual exactly to show in legend
+    # Factor levels grouped by regime for a clean legend
     line_group = factor(line_group, levels = c(
-      "AncCond 1->0 (Symmetrical)", 
-      "AncCond 1->0 (Asymmetrical)", 
-      "Phyloglm"
+      "AncCond q10 = q01", 
+      "Phyloglm q10 = q01",
+      "AncCond q10 = 0.1", 
+      "Phyloglm q10 = 0.1"
     ))
   )
 
@@ -41,13 +45,14 @@ p <- ggplot(df_final, aes(x = s, y = rate, color = line_group, group = line_grou
   # HORIZONTAL FACETS
   facet_grid(. ~ q_label) +
   
-  # COLORS: Teal (Sym), Purple (Asym), Golden Yellow (phyloglm)
+  # COLORS: Deep colors for AncCond, lighter tints for phyloglm
   scale_color_manual(
     name = "Simulation Method",
     values = c(
-      "AncCond 1->0 (Symmetrical)"  = "#21908CFF", # Teal
-      "AncCond 1->0 (Asymmetrical)" = "#440154FF", # Purple
-      "Phyloglm"                    = "#D4A017"    # Golden Yellow
+      "AncCond q10 = q01"  = "#21908CFF", # Deep Teal
+      "Phyloglm q10 = q01"      = "#7EC7C4",   # Light Pastel Teal
+      "AncCond q10 = 0.1" = "#440154FF", # Deep Purple
+      "Phyloglm q10 = 0.1"     = "#9B6AA6"    # Light Pastel Purple
     )
   ) +
   
@@ -60,7 +65,7 @@ p <- ggplot(df_final, aes(x = s, y = rate, color = line_group, group = line_grou
   scale_x_continuous(breaks = c(1, 2, 3, 5, 10)) +
   
   labs(
-    title = "Power Comparison for 1->0 Transitions",
+    title = "Power Comparison of Aysmmetric Transition Rates",
     x = "Signal Strength (s)",
     y = "Power",
     color = "Method"
@@ -76,9 +81,9 @@ p <- ggplot(df_final, aes(x = s, y = rate, color = line_group, group = line_grou
     legend.title = element_text(face = "bold", size = 12),
     legend.text = element_text(size = 11)
   ) +
-  # Boost legend icon size for visibility
-  guides(color = guide_legend(override.aes = list(linewidth = 1.5, size = 4)))
+  # Stack legend in 2 columns for a clean 2x2 block
+  guides(color = guide_legend(override.aes = list(linewidth = 1.5, size = 4), ncol = 2))
 
 # 5. Display and Save
 print(p)
-ggsave("anccond_h2h_final_titled.png", p, width = 14, height = 6, dpi = 300)
+#ggsave("anccond_h2h_final_titled.png", p, width = 14, height = 6, dpi = 300)
