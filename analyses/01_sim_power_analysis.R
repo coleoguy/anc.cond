@@ -1,5 +1,11 @@
 # ============================================================================
-# Main Power & False-Positive Simulation for AncCond (Fixed for Windows)
+# 01_sim_power_analysis.R
+#
+# Main Power & False-Positive Simulation for AncCond 
+# Parameters:
+#     -Tree size (50,100,200,500)
+#     -Q-rate (0.1,0.5,1.0,2.0)
+#     -Scaling Factor (s) (1,2,3,5,10)
 # ============================================================================
 
 library(ape)

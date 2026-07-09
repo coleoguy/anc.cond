@@ -1,6 +1,10 @@
 # ============================================================================
+# 03_sim_asymm_comparision.R
+#
 # Asymmetric Power & False-Positive Simulation for AncCond
-# Changes: min.state = 10% of taxa, Root state fixed to 0.
+# min.state = 10% of taxa, Root state fixed to 0.
+#
+# Dependencies: ape, phytools, parallel
 # ============================================================================
 
 library(ape)

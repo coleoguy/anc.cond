@@ -1,5 +1,6 @@
 # ============================================================================
-# R3-SIM-1 + R1-SIM-1: OU Adversarial Scenario (Causation Reversal Test)
+# 02_sim_OU_adversarial.R
+# OU Adversarial Scenario (Causation Reversal Test)
 #
 # Tests whether AncCond produces false positives when the DISCRETE trait
 # drives the CONTINUOUS trait (opposite of what AncCond assumes).
