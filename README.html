@@ -352,169 +352,697 @@ display: none;
 </div>
 
 
-<div id="ancestral-condition-test-reproducibility-repository" class="section level1">
-<h1>Ancestral Condition Test Reproducibility Repository</h1>
-<p>This repository consolidates the code and data used to evaluate the
-ancestral condition (AncCond) test described in the accompanying
-manuscript. The project now has a streamlined layout with a single,
-well-documented function module, a focused set of simulation scripts
-that reproduce the power and false-positive analyses from the paper,
-scripts for creating manuscript figures, and the manuscript files
-themselves.</p>
+<div id="anccond-the-ancestral-condition-test" class="section level1">
+<h1>AncCond: The Ancestral Condition Test</h1>
+<p>This repository contains a modern, dependency-light implementation of
+the <strong>Ancestral Condition (AncCond) test</strong> together with
+all of the code, data, and results needed to reproduce the power
+analyses, adversarial simulations, and empirical squamate example from
+the accompanying manuscript.</p>
+<p>The AncCond test asks a focused evolutionary question:</p>
+<blockquote>
+<p><strong>Do transitions in a binary discrete trait tend to occur when
+a co-evolving continuous trait sits at an extreme (high or low)
+value?</strong></p>
+</blockquote>
+<p>A classic motivating example is the evolution of viviparity (live
+birth) in reptiles: does the switch from egg-laying to live birth tend
+to arise in lineages that have already evolved a particular body size?
+AncCond reconstructs the continuous trait along the tree, locates where
+the discrete trait changes state, and asks whether those change points
+fall at unusually high or low values of the continuous trait relative to
+a null model in which the discrete trait evolves independently.</p>
+<hr />
+<div id="table-of-contents" class="section level2">
+<h2>Table of contents</h2>
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#how-the-method-works">How the method works</a></li>
+<li><a href="#repository-structure">Repository structure</a></li>
+<li><a href="#installation-and-requirements">Installation and
+requirements</a></li>
+<li><a href="#quick-start">Quick start</a></li>
+<li><a href="#the-anccond-function">The <code>AncCond()</code>
+function</a></li>
+<li><a href="#reproducible-analyses">Reproducible analyses</a></li>
+<li><a href="#data">Data</a></li>
+<li><a href="#figures">Figures</a></li>
+<li><a href="#results">Results</a></li>
+<li><a href="#working-directories-and-paths">Working directories and
+paths</a></li>
+<li><a href="#citation-and-authors">Citation and authors</a></li>
+<li><a href="#contact">Contact</a></li>
+</ul>
+<hr />
+</div>
+<div id="overview" class="section level2">
+<h2>Overview</h2>
+<p>The AncCond test was originally introduced by the Blackmon lab and
+distributed in the <a href="https://rdrr.io/github/coleoguy/evobir/"><code>evobiR</code></a> R
+package. This repository provides a <strong>rewritten, self-contained
+implementation</strong> (<code>R/AncCond.R</code>) that:</p>
+<ul>
+<li>depends only on <code>ape</code> and <code>phytools</code> (the
+latter used solely for <code>fastAnc</code>);</li>
+<li>fits the discrete-trait model internally with a fast, log-rescaled
+pruning algorithm rather than calling out to a general Mk fitter;</li>
+<li>tests <strong>both</strong> directions of change (gains,
+<code>0 → 1</code>, and losses, <code>1 → 0</code>) in a single
+run;</li>
+<li>supports one-sided and two-sided hypotheses, an optional
+user-supplied rate matrix, and a “pruned” reconstruction mode that
+estimates the continuous trait using only lineages still in the
+ancestral state.</li>
+</ul>
+<p>The repository is organized as a <strong>reproducibility
+project</strong>: the <code>R/</code> module is the method itself, and
+the <code>analyses/</code>, <code>figures/</code>, <code>data/</code>,
+and <code>results/</code> directories let a reader regenerate every
+number and figure in the manuscript.</p>
+</div>
+<div id="how-the-method-works" class="section level2">
+<h2>How the method works</h2>
+<p>For a rooted phylogeny with a continuous trait <code>x</code> and a
+binary trait <code>y</code> at the tips, <code>AncCond()</code> proceeds
+in five conceptual steps:</p>
+<ol style="list-style-type: decimal">
+<li><strong>Continuous-trait reconstruction.</strong> Ancestral values
+of <code>x</code> at internal nodes are estimated with maximum
+likelihood (<code>phytools::fastAnc</code>). In
+<code>prune = TRUE</code> mode the reconstruction uses only the tips
+that remain in state <code>0</code>, so that selection acting after the
+discrete transition does not bias the ancestral estimates.</li>
+<li><strong>Discrete-trait model.</strong> A two-state Markov (Mk) model
+is fitted to <code>y</code>. The code compares an all-rates-different
+(ARD) model against a unidirectional model (<code>q10 = 0</code>) and
+keeps the AIC-preferred fit (conservatively favouring the simpler
+model). A fixed rate matrix <code>Q</code> may be supplied to skip model
+selection entirely.</li>
+<li><strong>Observed test statistic.</strong> Discrete-trait histories
+are sampled by stochastic mapping. On every branch that changes state,
+the transition point is placed by drawing from a truncated exponential
+and the continuous trait is linearly interpolated between the parent and
+child reconstructed values. The statistic <code>T</code> is the mean
+interpolated value at transition points, computed separately for
+<code>0 → 1</code> and <code>1 → 0</code> changes.</li>
+<li><strong>Null distribution.</strong> Holding the continuous trait
+fixed, many discrete-trait datasets are simulated under the fitted Mk
+model, and <code>T</code> is recomputed for each, yielding a null
+distribution for gains and for losses.</li>
+<li><strong>P-values.</strong> The observed <code>T</code> is compared
+to the null with a continuity correction, producing upper- and
+lower-tail p-values, a hypothesis-adjusted p-value per direction, and a
+Bonferroni-combined p-value across both directions.</li>
+</ol>
+</div>
 <div id="repository-structure" class="section level2">
 <h2>Repository structure</h2>
-<pre><code>.
-├── R/                      # Core functions that implement AncCond
-├── analyses/              # Reproducible simulation analyses from the paper
-├── data/                  # Empirical datasets used in the manuscript
-├── manuscript/            # Manuscript, figure scripts, and supporting docs
-├── results/               # Saved analysis outputs (RData and RDS files)
-└── README.md              # This document</code></pre>
-<div id="core-functions-r" class="section level3">
-<h3>Core functions (<code>R/</code>)</h3>
-<ul>
-<li><code>anc_cond.R</code> – defines the AncCond test and helper
-utilities (<code>AncCond</code>, <code>summary.AncCond</code>,
-<code>plot.AncCond</code>, and supporting functions). Source this file
-in interactive R sessions or scripts before running any analysis:</li>
-</ul>
-<pre class="r"><code>source(&quot;R/anc_cond.R&quot;)</code></pre>
-<p>The exported <code>AncCond()</code> function accepts a tree
-(<code>phylo</code>), a data frame with the tip labels, continuous
-trait, and discrete trait, and optional arguments to adjust the
-transition model, null simulations, and reporting verbosity.</p>
+<pre><code>anc.cond/
+├── R/
+│   ├── AncCond.R            # Core method: AncCond() + print method + internal helpers
+│   ├── AncCond.Rd           # R help page for AncCond()
+│
+├── analyses/
+│   ├── 01_sim_power_analysis.R      # Power &amp; false-positive rate (symmetric Mk)
+│   ├── 02_sim_OU_adversarial.R      # Adversarial &quot;causation reversal&quot; (state-dependent OU)
+│   ├── 03_sim_asymm_comparision.R   # Power &amp; FPR under asymmetric transition rates
+│   ├── 04_empirical_squamates.R     # Empirical example: body size vs. viviparity
+|
+├── data/
+│   ├── output.nex                   # 100 posterior squamate trees (Tonini et al. 2016)
+│   ├── squamate_traits.csv          # Body size (log SVL) + reproductive mode per species
+│
+├── figures/
+│   ├── *.pdf                        # Manuscript figures (see Figures section)
+│   ├── figure_scripts/              # Scripts that build each figure from result CSVs
+│
+├── results/
+│   ├── 01_sim_power_*.csv           # Symmetric power/FPR raw + summary tables
+│   ├── 01_sim_asymm_power_*.csv     # Asymmetric power/FPR raw + summary tables
+│   ├── 02_sim_OU_adversarial_*      # Adversarial FPR results (.csv and .rds)
+│   ├── empirical_squamate_results.csv  # Per-tree AncCond results for squamates
+│
+└── README.md                        # This file</code></pre>
 </div>
-<div id="analysis-scripts-analyses" class="section level3">
-<h3>Analysis scripts (<code>analyses/</code>)</h3>
-<p>Each script is self-contained and may be executed from the repository
-root with <code>Rscript</code>. By default the scripts run modest
-numbers of simulations to keep runtimes reasonable; adjust the function
-arguments inside each script for larger experiments.</p>
+<div id="installation-and-requirements" class="section level2">
+<h2>Installation and requirements</h2>
+<p>The code targets <strong>R ≥ 4.0</strong>. There is no
+<code>DESCRIPTION</code>/<code>NAMESPACE</code>; this is a script and
+data repository rather than an installable package, so you use it by
+cloning the repo and <code>source()</code>-ing the function.</p>
+<pre class="bash"><code>git clone https://github.com/coleoguy/anc.cond.git
+cd anc.cond</code></pre>
+<p>Install the R packages used across the method, the simulations, and
+the figures:</p>
+<pre class="r"><code># Core method (required for AncCond itself)
+install.packages(c(&quot;ape&quot;, &quot;phytools&quot;))
+
+# Additional packages used by the analysis scripts
+install.packages(c(&quot;phylolm&quot;, &quot;nlme&quot;, &quot;R.utils&quot;, &quot;parallel&quot;))
+
+# Additional packages used by the figure scripts
+install.packages(c(&quot;ggplot2&quot;, &quot;dplyr&quot;, &quot;tidyr&quot;))</code></pre>
 <table>
 <colgroup>
-<col width="14%" />
-<col width="16%" />
-<col width="33%" />
-<col width="35%" />
+<col width="11%" />
+<col width="34%" />
+<col width="54%" />
 </colgroup>
 <thead>
 <tr class="header">
-<th>Script</th>
+<th>Package</th>
+<th>Used by</th>
 <th>Purpose</th>
-<th>Key parameters</th>
-<th>Default output</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>scaling_bidirectional_analysis.R</code></td>
-<td>Tests power under bidirectional transitions while scaling branches
-associated with extreme continuous trait values.</td>
-<td><code>n_trees</code>, <code>n_taxa</code>,
-<code>scaling_factors</code>, <code>rate</code>, <code>nsim</code>,
-<code>iter</code></td>
-<td><code>results/scaling_bidirectional_results.rds</code></td>
+<td><code>ape</code></td>
+<td>method + all analyses</td>
+<td>Core phylogenetic data structures</td>
 </tr>
 <tr class="even">
-<td><code>scaling_unidirectional_analysis.R</code></td>
-<td>Evaluates scenarios where gains of the derived state dominate
-(reverse transitions are extremely rare).</td>
-<td><code>n_trees</code>, <code>scaling_factors</code>,
-<code>forward_rate</code>, <code>reverse_rate</code>, <code>nsim</code>,
-<code>iter</code></td>
-<td><code>results/scaling_unidirectional_results.rds</code></td>
+<td><code>phytools</code></td>
+<td>method + all analyses</td>
+<td><code>fastAnc</code>, <code>fastBM</code>, <code>pbtree</code>,
+<code>sim.history</code></td>
 </tr>
 <tr class="odd">
-<td><code>taxa_bidirectional_analysis.R</code></td>
-<td>Quantifies power as the number of taxa increases under a
-bidirectional transition model.</td>
-<td><code>taxa_grid</code>, <code>n_trees</code>, <code>rate</code>,
-<code>sigma</code>, <code>nsim</code>, <code>iter</code></td>
-<td><code>results/taxa_bidirectional_results.rds</code></td>
+<td><code>phylolm</code></td>
+<td>analyses 01, 03</td>
+<td><code>phyloglm</code> comparison method</td>
 </tr>
 <tr class="even">
-<td><code>taxa_unidirectional_analysis.R</code></td>
-<td>Mirrors the taxa analysis when the discrete trait is effectively
-unidirectional.</td>
-<td><code>taxa_grid</code>, <code>forward_rate</code>,
-<code>reverse_rate</code>, <code>nsim</code>, <code>iter</code></td>
-<td><code>results/taxa_unidirectional_results.rds</code></td>
+<td><code>nlme</code></td>
+<td>analyses 01, 03</td>
+<td><code>gls</code> / PGLS comparison method</td>
+</tr>
+<tr class="odd">
+<td><code>parallel</code></td>
+<td>analyses 01–04</td>
+<td>Cross-platform socket clusters</td>
+</tr>
+<tr class="even">
+<td><code>R.utils</code></td>
+<td>analysis 02</td>
+<td><code>withTimeout</code> guard for long replicates</td>
+</tr>
+<tr class="odd">
+<td><code>ggplot2</code></td>
+<td>figure scripts</td>
+<td>Plotting</td>
+</tr>
+<tr class="even">
+<td><code>dplyr</code></td>
+<td>figure scripts</td>
+<td>Data wrangling</td>
+</tr>
+<tr class="odd">
+<td><code>tidyr</code></td>
+<td>figure scripts</td>
+<td>Reshaping (<code>pivot_longer</code>/<code>pivot_wider</code>)</td>
 </tr>
 </tbody>
 </table>
-<p>Each script sources <code>R/anc_cond.R</code>, sets a deterministic
-seed for reproducibility, and saves results as tidy <code>rds</code>
-objects. Existing <code>*.RData</code> files in <code>results/</code>
-contain legacy outputs preserved for reference.</p>
-<p>To run, for example, the bidirectional scaling study:</p>
-<pre class="bash"><code>Rscript analyses/scaling_bidirectional_analysis.R</code></pre>
 </div>
-<div id="manuscript-and-figures-manuscript" class="section level3">
-<h3>Manuscript and figures (<code>manuscript/</code>)</h3>
+<div id="quick-start" class="section level2">
+<h2>Quick start</h2>
+<pre class="r"><code>library(ape)
+library(phytools)
+source(&quot;R/AncCond.R&quot;)
+
+# Simulate a toy dataset
+set.seed(1)
+tree &lt;- pbtree(n = 100, scale = 1)
+x &lt;- fastBM(tree)                                   # continuous trait
+y &lt;- rbinom(100, 1, 0.3); names(y) &lt;- tree$tip.label # binary trait
+
+# Run the test (small settings for a quick demo)
+res &lt;- AncCond(tree, x, y, n.maps = 50, n.sims = 500)
+
+res                 # pretty-printed summary (print.anccond)
+res$p.combined      # Bonferroni p-value across both directions
+res$p.01            # p-value for gains (0 -&gt; 1)
+res$p.10            # p-value for losses (1 -&gt; 0)</code></pre>
+<p>For a directional hypothesis (e.g. “gains happen at high continuous
+values”):</p>
+<pre class="r"><code>res &lt;- AncCond(tree, x, y, hypothesis = &quot;higher&quot;)
+res$p.upper.01</code></pre>
+</div>
+<div id="the-anccond-function" class="section level2">
+<h2>The <code>AncCond()</code> function</h2>
+<pre class="r"><code>AncCond(tree, x, y,
+        n.maps     = 100,
+        n.sims     = 1000,
+        prune      = FALSE,
+        Q          = NULL,
+        hypothesis = &quot;none&quot;)</code></pre>
+<div id="arguments" class="section level3">
+<h3>Arguments</h3>
+<table>
+<colgroup>
+<col width="8%" />
+<col width="10%" />
+<col width="5%" />
+<col width="75%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Argument</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>tree</code></td>
+<td><code>phylo</code></td>
+<td>—</td>
+<td>A rooted, bifurcating phylogeny with branch lengths.</td>
+</tr>
+<tr class="even">
+<td><code>x</code></td>
+<td>named numeric</td>
+<td>—</td>
+<td>Continuous trait values at the tips; names must match
+<code>tree$tip.label</code>.</td>
+</tr>
+<tr class="odd">
+<td><code>y</code></td>
+<td>named integer</td>
+<td>—</td>
+<td>Binary discrete trait (<code>0</code>/<code>1</code>) at the tips;
+names must match <code>tree$tip.label</code>.</td>
+</tr>
+<tr class="even">
+<td><code>n.maps</code></td>
+<td>integer</td>
+<td><code>100</code></td>
+<td>Stochastic maps drawn per test-statistic computation.</td>
+</tr>
+<tr class="odd">
+<td><code>n.sims</code></td>
+<td>integer</td>
+<td><code>1000</code></td>
+<td>Null-model simulations used to build the reference
+distribution.</td>
+</tr>
+<tr class="even">
+<td><code>prune</code></td>
+<td>logical</td>
+<td><code>FALSE</code></td>
+<td>If <code>TRUE</code>, reconstruct the continuous trait using only
+state-<code>0</code> lineages (guards against post-transition
+selection).</td>
+</tr>
+<tr class="odd">
+<td><code>Q</code></td>
+<td>2×2 matrix</td>
+<td><code>NULL</code></td>
+<td>Optional fixed rate matrix (rows/cols labelled
+<code>&quot;0&quot;</code>,<code>&quot;1&quot;</code>). If supplied, model selection is
+skipped.</td>
+</tr>
+<tr class="even">
+<td><code>hypothesis</code></td>
+<td>character</td>
+<td><code>&quot;none&quot;</code></td>
+<td><code>&quot;none&quot;</code> (two-sided), <code>&quot;higher&quot;</code> (transitions
+at high values), or <code>&quot;lower&quot;</code> (transitions at low
+values).</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Note on <code>Q</code>.</strong> The function expects a 2×2
+matrix. The <code>.Rd</code> example shows the legacy
+<code>Q = c(0,2,1,0)</code> vector form; when calling the current
+<code>AncCond()</code> directly, pass a matrix,
+e.g. <code>matrix(c(-q01, q01, q10, -q10), 2, 2, byrow = TRUE)</code>,
+or leave <code>Q = NULL</code> to let the function fit the Mk model.</p>
+</blockquote>
+</div>
+<div id="return-value" class="section level3">
+<h3>Return value</h3>
+<p>An object of class <code>&quot;anccond&quot;</code> (a list) with, among
+others:</p>
+<table>
+<colgroup>
+<col width="27%" />
+<col width="72%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Element</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>T.obs.01</code>, <code>T.obs.10</code></td>
+<td>Observed mean continuous value at <code>0→1</code> and
+<code>1→0</code> transitions.</td>
+</tr>
+<tr class="even">
+<td><code>p.01</code>, <code>p.10</code></td>
+<td>Hypothesis-adjusted p-values for gains and losses.</td>
+</tr>
+<tr class="odd">
+<td><code>p.combined</code></td>
+<td>Bonferroni-corrected p-value across both directions:
+<code>min(1, 2·min(p.01, p.10))</code>.</td>
+</tr>
+<tr class="even">
+<td><code>p.upper.01</code>, <code>p.lower.01</code></td>
+<td>One-sided tail probabilities for <code>0→1</code>
+(<code>P(T_null ≥ T_obs)</code>, <code>P(T_null ≤ T_obs)</code>).</td>
+</tr>
+<tr class="odd">
+<td><code>p.upper.10</code>, <code>p.lower.10</code></td>
+<td>One-sided tail probabilities for <code>1→0</code>.</td>
+</tr>
+<tr class="even">
+<td><code>T.null.01</code>, <code>T.null.10</code></td>
+<td>Null distributions (length <code>n.sims</code>) for each
+direction.</td>
+</tr>
+<tr class="odd">
+<td><code>Q</code></td>
+<td>The fitted (or supplied) rate matrix.</td>
+</tr>
+<tr class="even">
+<td><code>model</code></td>
+<td><code>&quot;ARD&quot;</code>, <code>&quot;unidirectional&quot;</code>, or
+<code>&quot;user-supplied&quot;</code>.</td>
+</tr>
+<tr class="odd">
+<td><code>hypothesis</code></td>
+<td>The hypothesis direction used.</td>
+</tr>
+</tbody>
+</table>
+<p>A <code>print</code> method (<code>print.anccond</code>) renders a
+compact, human-readable summary of the model, observed statistics, and
+p-values.</p>
+</div>
+<div id="internal-helpers" class="section level3">
+<h3>Internal helpers</h3>
+<p><code>R/AncCond.R</code> is fully self-contained. The exported
+<code>AncCond()</code> and <code>print.anccond()</code> are built on
+internal functions that a curious reader may find useful:</p>
 <ul>
-<li><code>anc_cond_manuscript.pdf</code> and
-<code>anc_cond_manuscript.docx</code> – the primary manuscript in PDF
-and Word formats.</li>
-<li><code>figure_scripts/</code> – R scripts that generate the figures
-referenced in the manuscript:
-<ul>
-<li><code>figure1_four_panel.R</code></li>
-<li><code>model_comparison.R</code></li>
-<li><code>scaling_factor_plot.R</code></li>
-<li><code>taxa_number_plot.R</code></li>
-</ul></li>
-<li><code>figures/</code> – static figure files as included in the
-manuscript.</li>
-<li>Additional supporting documents (<code>cover letter.doc</code>,
-<code>listofneeds.docx</code>, <code>response.docx</code>).</li>
+<li><code>.tp2()</code> — analytical 2-state transition probability
+matrix.</li>
+<li><code>.pruning2()</code> — Felsenstein pruning with log-rescaling
+for numerical stability.</li>
+<li><code>.fitMk2()</code> — fits ARD vs. unidirectional Mk models and
+returns the AIC-preferred fit.</li>
+<li><code>.simMk2()</code> — vectorized batch simulation of discrete tip
+states under Mk.</li>
+<li><code>.anccond.T()</code> — samples stochastic maps and computes the
+transition-point statistics.</li>
+<li><code>.map.pruned()</code> — maps pruned-tree ancestral estimates
+back onto the full tree.</li>
 </ul>
 </div>
-<div id="data-data" class="section level3">
-<h3>Data (<code>data/</code>)</h3>
-<p>The <code>data/</code> directory provides all empirical datasets
-required by the analysis and figure scripts, including the whale
-phylogeny (<code>whales.tre</code>, <code>whale_sizes.csv</code>) and
-saved objects used to reproduce the main figures
-(<code>Fig1Tree.RData</code>, <code>Fig1ContTrait.RData</code>,
-<code>Fig1DiscSimMap.RData</code>).</p>
 </div>
-<div id="results-results" class="section level3">
-<h3>Results (<code>results/</code>)</h3>
-<p>The <code>results/</code> folder stores both historical
-<code>*.RData</code> objects produced during manuscript preparation and
-the new, cleaner <code>*.rds</code> outputs generated by the updated
-analysis scripts. Each new script writes a single <code>rds</code> file
-summarizing p-values across simulation replicates.</p>
+<div id="reproducible-analyses" class="section level2">
+<h2>Reproducible analyses</h2>
+<p>All four analysis scripts live in <code>analyses/</code>, use socket
+clusters for parallelism (portable across macOS/Linux/Windows), and set
+seeds for reproducibility. Each <code>source()</code>s the method file
+and writes tabular results. See <a href="#working-directories-and-paths">Working directories and paths</a>
+for the exact setup the scripts assume.</p>
+<div id="sim_power_analysis.r-power-and-false-positive-rates" class="section level3">
+<h3><code>01_sim_power_analysis.R</code> — power and false-positive
+rates</h3>
+<p>Simulates a symmetric Mk discrete trait alongside a Brownian
+continuous trait, then injects a controlled association by scaling
+branch lengths in the extreme quartiles of the continuous trait by a
+factor <code>s</code>. Compares <strong>AncCond</strong> against
+<strong><code>phyloglm</code></strong> and <strong>PGLS</strong>.</p>
+<ul>
+<li>Grid: <code>n.tips ∈ {50, 100, 200, 500}</code> ×
+<code>q ∈ {0.1, 0.5, 1.0, 2.0}</code> ×
+<code>s ∈ {1, 2, 3, 5, 10}</code> (<code>s = 1</code> is the null /
+false-positive case), with 200 replicates per cell.</li>
+<li>Datasets require ≥ 10% of tips in each state; over-imbalanced draws
+are rejected and logged.</li>
+<li><strong>Outputs:</strong> <code>01_sim_power_raw.csv</code>,
+<code>01_sim_power_results.csv</code>,
+<code>01_sim_discard_log.csv</code>.</li>
+</ul>
+<pre class="bash"><code>Rscript 01_sim_power_analysis.R</code></pre>
 </div>
-<div id="software-requirements" class="section level3">
-<h3>Software requirements</h3>
-<p>All analyses rely on R (≥ 4.0 recommended) with the following
-packages installed:</p>
-<pre class="r"><code>install.packages(c(&quot;phytools&quot;, &quot;diversitree&quot;, &quot;geiger&quot;))</code></pre>
-<p>The scripts manage their own random seeds for reproducibility. When
-running large simulations, consider adjusting the <code>nsim</code>,
-<code>iter</code>, and loop parameters to balance precision and
-runtime.</p>
+<div id="sim_ou_adversarial.r-adversarial-causation-reversal-test" class="section level3">
+<h3><code>02_sim_OU_adversarial.R</code> — adversarial “causation
+reversal” test</h3>
+<p>A stress test of specificity. Here the <strong>discrete trait drives
+the continuous trait</strong> (the opposite of AncCond’s assumption):
+the continuous trait evolves under a two-optimum Ornstein–Uhlenbeck
+process whose optimum switches with the current discrete state. A
+well-behaved test should <em>not</em> raise many false positives.</p>
+<ul>
+<li>200 tips, 1000 replicates; sweeps OU pull-back
+<code>alpha ∈ {0.5, 2, 8}</code> and optimum gap
+<code>delta.theta ∈ {2, 4, 8}</code> (<code>sigma = 1</code>).</li>
+<li>Runs both the standard and pruned variants of AncCond, with
+per-replicate timeouts.</li>
+<li><strong>Outputs:</strong>
+<code>02_sim_OU_adversarial_results.rds</code>,
+<code>02_sim_OU_adversarial_results.csv</code>,
+<code>02_sim_OU_adversarial_raw.csv</code>.</li>
+</ul>
 </div>
-<div id="getting-started" class="section level3">
-<h3>Getting started</h3>
-<ol style="list-style-type: decimal">
-<li>Install the required R packages.</li>
-<li>Clone the repository and set the working directory to the project
-root.</li>
-<li>Source <code>R/anc_cond.R</code> in an interactive session, or
-execute any of the scripts in <code>analyses/</code> using
-<code>Rscript</code> as shown above.</li>
-<li>Use the scripts in <code>manuscript/figure_scripts/</code> to
-recreate manuscript figures once the relevant result files are
-available.</li>
-</ol>
+<div id="sim_asymm_comparision.r-asymmetric-transition-rates" class="section level3">
+<h3><code>03_sim_asymm_comparision.R</code> — asymmetric transition
+rates</h3>
+<p>Mirrors script 01 but under <strong>asymmetric</strong> discrete
+evolution: the reverse rate is held low (<code>q10 = 0.1</code>) while
+the forward rate varies (<code>q01 ∈ {0.1, 0.5, 1.0, 2.0}</code>), with
+the root fixed to state <code>0</code>. This probes how directionality
+in the discrete trait affects power and false-positive control.</p>
+<ul>
+<li>Grid: <code>n.tips ∈ {50, 100, 200, 500}</code> ×
+<code>q01 ∈ {0.1, 0.5, 1.0, 2.0}</code> ×
+<code>s ∈ {1, 2, 3, 5, 10}</code>, 200 replicates per cell; results
+reshaped to long form with per-method significance counts.</li>
+<li><strong>Outputs:</strong> <code>01_sim_asymm_power_raw.csv</code>,
+<code>01_sim_asymm_power_results.csv</code>.</li>
+</ul>
 </div>
-<div id="contact" class="section level3">
-<h3>Contact</h3>
-<p>For questions about the analyses or manuscript, please consult the
-corresponding authors listed in the manuscript files.</p>
+<div id="empirical_squamates.r-body-size-and-viviparity-in-squamates" class="section level3">
+<h3><code>04_empirical_squamates.R</code> — body size and viviparity in
+squamates</h3>
+<p>Applies AncCond to a real question: <strong>is the evolution of
+viviparity (live birth) in squamate reptiles associated with body
+size?</strong> The continuous trait is <code>log</code> maximum
+snout–vent length (SVL); the discrete trait is oviparous
+(<code>0</code>, ancestral) vs. viviparous (<code>1</code>,
+derived).</p>
+<ul>
+<li>Reads the 100 posterior trees in <code>../data/output.nex</code> and
+the traits in <code>../data/squamate_traits.csv</code>, deduplicates
+species (mean SVL), and matches the shared taxa. Runs AncCond on every
+posterior tree in parallel (<code>n.maps = 100</code>,
+<code>n.sims = 500</code>).</li>
+<li><strong>Outputs:</strong>
+<code>../results/empirical_squamate_results.csv</code> (per-tree
+statistics and p-values) and
+<code>../figures/figure6_empirical.pdf</code> (null distributions with
+observed values overlaid).</li>
+<li>In the committed results, none of the 100 posterior trees yield
+<code>p.combined &lt; 0.05</code>, i.e. this analysis does not detect a
+significant association between body size and reproductive-mode
+transitions across the posterior. (Consult the manuscript for
+interpretation.)</li>
+</ul>
+<blockquote>
+<p><strong>Heads-up:</strong> <code>04_empirical_squamates.R</code> sets
+<code>n.cores &lt;- 28</code>. Lower this to match your machine
+(e.g. <code>parallel::detectCores() - 2</code>) before running.</p>
+</blockquote>
 </div>
+</div>
+<div id="data" class="section level2">
+<h2>Data</h2>
+<table>
+<colgroup>
+<col width="20%" />
+<col width="80%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>File</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>data/output.nex</code></td>
+<td>100 posterior squamate phylogenies subsampled/pruned from <a href="http://vertlife.org">VertLife</a>, derived from Tonini et
+al. (2016).</td>
+</tr>
+<tr class="even">
+<td><code>data/squamate_traits.csv</code></td>
+<td>One row per species record with columns <code>species</code>,
+<code>log_svl_mm</code> (log maximum SVL in mm), and
+<code>repro_mode</code>
+(<code>Oviparous</code>/<code>Viviparous</code>). ~5,955 records;
+body-size/reproductive-mode data from SquamBase (Meiri 2024).</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="figures" class="section level2">
+<h2>Figures</h2>
+<p>Manuscript-ready figures are stored as PDFs in <code>figures/</code>,
+and the scripts that build them from the result CSVs live in
+<code>figures/figure_scripts/</code>:</p>
+<table>
+<colgroup>
+<col width="31%" />
+<col width="38%" />
+<col width="29%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Figure script</th>
+<th>Reads</th>
+<th>Produces</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>01_sim_power_visualization.R</code></td>
+<td><code>01_sim_power_results.csv</code></td>
+<td>Power curves (AncCond vs. phyloglm)</td>
+</tr>
+<tr class="even">
+<td><code>01_head_to_head_visualization.R</code></td>
+<td><code>01_sim_power_results.csv</code></td>
+<td>Head-to-head power scatter</td>
+</tr>
+<tr class="odd">
+<td><code>01_sim_asymm_visualization.R</code></td>
+<td><code>01_sim_power_results.csv</code>,
+<code>01_sim_asymm_power_results.csv</code></td>
+<td>Symmetric vs. asymmetric power</td>
+</tr>
+<tr class="even">
+<td><code>02_sim_adversarial_visualization.R</code></td>
+<td><code>02_sim_OU_adversarial_results.csv</code></td>
+<td>Adversarial false-positive rates</td>
+</tr>
+<tr class="odd">
+<td><code>supp_symmetry_check.R</code></td>
+<td><code>01_sim_power_results.csv</code></td>
+<td><code>0→1</code> vs. <code>1→0</code> symmetry check (CCC)</td>
+</tr>
+</tbody>
+</table>
+<p>Rendered outputs include <code>Method Performance.pdf</code>,
+<code>Asym power comparision.pdf</code>, <code>OU model.pdf</code>,
+<code>Figure 1.pdf</code>, <code>phylo_vs_AncCond.pdf</code>,
+<code>AncCond_Symmetry_Check.pdf</code>, and
+<code>figure6_empirical.pdf</code>.</p>
+</div>
+<div id="results" class="section level2">
+<h2>Results</h2>
+<p>The <code>results/</code> directory holds the tabular outputs
+consumed by the figure scripts:</p>
+<table>
+<colgroup>
+<col width="34%" />
+<col width="65%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>File</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>01_sim_power_raw.csv</code></td>
+<td>Per-replicate p-values (AncCond <code>0→1</code>/<code>1→0</code>,
+phyloglm, PGLS).</td>
+</tr>
+<tr class="even">
+<td><code>01_sim_power_results.csv</code></td>
+<td>Per-cell rejection rates (<code>rate</code>), significant counts,
+<code>metric</code> (FPR/power).</td>
+</tr>
+<tr class="odd">
+<td><code>01_sim_discard_log.csv</code></td>
+<td>Rejected-draw counts per grid cell.</td>
+</tr>
+<tr class="even">
+<td><code>01_sim_asymm_power_raw.csv</code> /
+<code>_results.csv</code></td>
+<td>Raw and summarized asymmetric-rate results.</td>
+</tr>
+<tr class="odd">
+<td><code>02_sim_OU_adversarial_results.csv</code> /
+<code>.rds</code></td>
+<td>Adversarial false-positive summary (standard vs. pruned).</td>
+</tr>
+<tr class="even">
+<td><code>02_sim_OU_adversarial_raw.csv</code></td>
+<td>Per-replicate adversarial p-values.</td>
+</tr>
+<tr class="odd">
+<td><code>empirical_squamate_results.csv</code></td>
+<td>Per-tree AncCond statistics and p-values for the squamate
+example.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="working-directories-and-paths" class="section level2">
+<h2>Working directories and paths</h2>
+<p>The scripts were written to run from within the folder that contains
+them, and they refer to <code>AncCond.R</code> <strong>by bare
+filename</strong> (e.g. <code>source(&quot;AncCond.R&quot;)</code>) while writing
+data/figures via relative paths such as <code>../data/</code> and
+<code>../results/</code>. Because the method now lives in
+<code>R/</code>, do one of the following before running an analysis:</p>
+<p><strong>Option A — copy the method next to the scripts:</strong></p>
+<pre class="bash"><code>cp R/AncCond.R analyses/
+cd analyses
+Rscript 01_sim_power_analysis.R</code></pre>
+<p><strong>Option B — edit the <code>source()</code> line</strong> in
+each script to point at <code>../R/AncCond.R</code>, then run from
+<code>analyses/</code>.</p>
+<p>Notes:</p>
+<ul>
+<li>Scripts <code>01</code>–<code>03</code> write their CSV outputs to
+the <strong>current working directory</strong>; move the files into
+<code>results/</code> (as in this repo) to keep things organized, or run
+the scripts from within <code>results/</code>.</li>
+<li><code>04_empirical_squamates.R</code> already writes to
+<code>../results/</code> and <code>../figures/</code>, so run it from
+<code>analyses/</code>.</li>
+<li>Figure scripts read result CSVs <strong>by bare filename</strong>,
+so run them from <code>results/</code> (or copy the relevant CSVs into
+<code>figures/figure_scripts/</code> first).</li>
+</ul>
+</div>
+<div id="citation-and-authors" class="section level2">
+<h2>Citation and authors</h2>
+<p>If you use the AncCond test, please cite the accompanying manuscript
+and the original method as distributed in the <code>evobiR</code>
+package.</p>
+<p><strong>Authors:</strong> Meghann McConnell, Nathan Anderson, Richard
+H. Adams, and Heath Blackmon.</p>
+<p>Lab website: <a href="http://coleoguy.github.io/">coleoguy.github.io</a></p>
+</div>
+<div id="contact" class="section level2">
+<h2>Contact</h2>
+<p>Questions about the method, the simulations, or the empirical example
+are best directed to the corresponding authors listed in the manuscript.
+Issues and pull requests are welcome on the <a href="https://github.com/coleoguy/anc.cond">GitHub repository</a>.</p>
 </div>
 </div>
 

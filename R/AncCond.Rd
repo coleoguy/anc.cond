@@ -55,9 +55,14 @@ automatic model selection.}
 \references{http://coleoguy.github.io/}
 \examples{
 \dontrun{
-data(squamate.nex)
-data(squamate_traits.csv)
-AncCond(tr, x, y, n.maps = 50, n.sims = 500, Q = c(0,2,1,0), hypothesis = "none") 
+# Simulate a toy dataset
+set.seed(1)
+tree <- pbtree(n = 100, scale = 1)
+x <- fastBM(tree)                                   # continuous trait
+y <- rbinom(100, 1, 0.3); names(y) <- tree$tip.label # binary trait
+
+# Run the test (small settings for a quick demo)
+res <- AncCond(tree, x, y, n.maps = 50, n.sims = 500)
 }
 }
 \keyword{ comparative method }
