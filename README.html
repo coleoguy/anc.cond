@@ -354,11 +354,11 @@ display: none;
 
 <div id="anccond-the-ancestral-condition-test" class="section level1">
 <h1>AncCond: The Ancestral Condition Test</h1>
-<p>This repository contains a modern, dependency-light implementation of
-the <strong>Ancestral Condition (AncCond) test</strong> together with
-all of the code, data, and results needed to reproduce the power
-analyses, adversarial simulations, and empirical squamate example from
-the accompanying manuscript.</p>
+<p>This repository contains all necessary material of the
+<strong>Ancestral Condition (AncCond) test</strong> together with all of
+the code, data, and results needed to reproduce the power analyses,
+adversarial simulations, and empirical squamate example from the
+accompanying manuscript.</p>
 <p>The AncCond test asks a focused evolutionary question:</p>
 <blockquote>
 <p><strong>Do transitions in a binary discrete trait tend to occur when
@@ -397,13 +397,11 @@ paths</a></li>
 </div>
 <div id="overview" class="section level2">
 <h2>Overview</h2>
-<p>The AncCond test was originally introduced by the Blackmon lab and
-distributed in the <a href="https://rdrr.io/github/coleoguy/evobir/"><code>evobiR</code></a> R
+<p>The AncCond test is available in the Evobir R package. <a href="https://github.com/coleoguy/evobir"><code>evobiR</code></a> R
 package. This repository provides a <strong>rewritten, self-contained
 implementation</strong> (<code>R/AncCond.R</code>) that:</p>
 <ul>
-<li>depends only on <code>ape</code> and <code>phytools</code> (the
-latter used solely for <code>fastAnc</code>);</li>
+<li>depends only on <code>ape</code> and <code>phytools</code>;</li>
 <li>fits the discrete-trait model internally with a fast, log-rescaled
 pruning algorithm rather than calling out to a general Mk fitter;</li>
 <li>tests <strong>both</strong> directions of change (gains,
@@ -478,18 +476,17 @@ Bonferroni-combined p-value across both directions.</li>
 │
 ├── results/
 │   ├── 01_sim_power_*.csv           # Symmetric power/FPR raw + summary tables
-│   ├── 01_sim_asymm_power_*.csv     # Asymmetric power/FPR raw + summary tables
 │   ├── 02_sim_OU_adversarial_*      # Adversarial FPR results (.csv and .rds)
+|   ├── 03_sim_asymm_power_*.csv     # Asymmetric power/FPR raw + summary tables
 │   ├── empirical_squamate_results.csv  # Per-tree AncCond results for squamates
 │
 └── README.md                        # This file</code></pre>
 </div>
 <div id="installation-and-requirements" class="section level2">
 <h2>Installation and requirements</h2>
-<p>The code targets <strong>R ≥ 4.0</strong>. There is no
-<code>DESCRIPTION</code>/<code>NAMESPACE</code>; this is a script and
-data repository rather than an installable package, so you use it by
-cloning the repo and <code>source()</code>-ing the function.</p>
+<p>This is a script and data repository rather than an installable
+package, so you use it by cloning the repo and <code>source()</code>-ing
+the function.</p>
 <pre class="bash"><code>git clone https://github.com/coleoguy/anc.cond.git
 cd anc.cond</code></pre>
 <p>Install the R packages used across the method, the simulations, and

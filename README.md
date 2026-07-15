@@ -1,6 +1,6 @@
 # AncCond: The Ancestral Condition Test
 
-This repository contains a modern, dependency-light implementation of the **Ancestral
+This repository contains all necessary material of the **Ancestral
 Condition (AncCond) test** together with all of the code, data, and results needed to
 reproduce the power analyses, adversarial simulations, and empirical squamate example
 from the accompanying manuscript.
@@ -39,11 +39,11 @@ model in which the discrete trait evolves independently.
 
 ## Overview
 
-The AncCond test was originally introduced by the Blackmon lab and distributed in the
-[`evobiR`](https://rdrr.io/github/coleoguy/evobir/) R package. This repository provides a
+The AncCond test is available in the Evobir R package.
+[`evobiR`](https://github.com/coleoguy/evobir) R package. This repository provides a
 **rewritten, self-contained implementation** (`R/AncCond.R`) that:
 
-- depends only on `ape` and `phytools` (the latter used solely for `fastAnc`);
+- depends only on `ape` and `phytools`;
 - fits the discrete-trait model internally with a fast, log-rescaled pruning algorithm
   rather than calling out to a general Mk fitter;
 - tests **both** directions of change (gains, `0 → 1`, and losses, `1 → 0`) in a single run;
@@ -104,8 +104,8 @@ anc.cond/
 │
 ├── results/
 │   ├── 01_sim_power_*.csv           # Symmetric power/FPR raw + summary tables
-│   ├── 01_sim_asymm_power_*.csv     # Asymmetric power/FPR raw + summary tables
 │   ├── 02_sim_OU_adversarial_*      # Adversarial FPR results (.csv and .rds)
+|   ├── 03_sim_asymm_power_*.csv     # Asymmetric power/FPR raw + summary tables
 │   ├── empirical_squamate_results.csv  # Per-tree AncCond results for squamates
 │
 └── README.md                        # This file
@@ -113,8 +113,7 @@ anc.cond/
 
 ## Installation and requirements
 
-The code targets **R ≥ 4.0**. There is no `DESCRIPTION`/`NAMESPACE`; this is a script
-and data repository rather than an installable package, so you use it by cloning the repo
+This is a script and data repository rather than an installable package, so you use it by cloning the repo
 and `source()`-ing the function.
 
 ```bash
